@@ -52,7 +52,7 @@ def _mean_confidence_interval_95(samples: list[float]) -> dict[str, float]:
 def _extract_trial_rewards(results_path: Path) -> list[float]:
     data = json.loads(results_path.read_text())
     simulations = data.get("simulations", [])
-    return [float(sim.get("reward_info", {}).get("reward") or 0.0) for sim in simulations]
+    return [float((sim.get("reward_info") or {}).get("reward") or 0.0) for sim in simulations]
 
 
 def _model_slug(llm: str) -> str:
