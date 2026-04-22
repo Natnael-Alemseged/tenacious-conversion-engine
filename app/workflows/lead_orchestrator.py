@@ -113,3 +113,39 @@ class LeadOrchestrator:
                 if span:
                     span.update(output=result)
                 return result
+
+    def book_discovery_call(
+        self,
+        *,
+        attendee_name: str,
+        attendee_email: str,
+        start: str,
+        timezone: str = "UTC",
+        length_in_minutes: int = 30,
+        attendee_phone: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "attendee_name": attendee_name,
+            "attendee_email": attendee_email,
+            "start": start,
+            "timezone": timezone,
+            "length_in_minutes": length_in_minutes,
+        }
+        with self.langfuse.trace_workflow("book_discovery_call", payload):
+            with self.langfuse.span(
+                "calcom.create_booking",
+                input=payload,
+            ) as span:
+                result = self.calcom.create_booking(
+                    name=attendee_name,
+                    email=attendee_email,
+                    start=start,
+                    timezone=timezone,
+                    length_in_minutes=length_in_minutes,
+                    phone_number=attendee_phone,
+                    metadata=metadata,
+                )
+                if span:
+                    span.update(output=result)
+                return result
