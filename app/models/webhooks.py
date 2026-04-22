@@ -16,8 +16,19 @@ class InboundEmailEvent(BaseModel):
 
 class InboundSmsEvent(BaseModel):
     """Africa's Talking inbound SMS — parsed from form-encoded POST."""
+
     from_number: str
     to: str = ""
     text: str
     date: str = ""
     message_id: str = ""
+
+
+class DiscoveryCallBookingRequest(BaseModel):
+    attendee_name: str
+    attendee_email: EmailStr
+    start: str
+    timezone: str = "UTC"
+    length_in_minutes: int = 30
+    attendee_phone: str | None = None
+    metadata: dict[str, str] | None = None
