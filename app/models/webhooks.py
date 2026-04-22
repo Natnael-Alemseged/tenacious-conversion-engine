@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -10,7 +11,7 @@ class InboundEmailEvent(BaseModel):
     body: str
     message_id: str = ""
     in_reply_to: str = ""
-    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    received_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class InboundSmsEvent(BaseModel):
