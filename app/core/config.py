@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     # LLM via OpenRouter
     openrouter_api_key: str = ""
+    openrouter_api_keys: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "qwen/qwen3-235b-a22b"
 
@@ -44,6 +45,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def openrouter_key_pool(self) -> list[str]:
+        keys: list[str] = []
+        for raw in (self.openrouter_api_keys or "").replace("\n", ",").split(","):
+            key = raw.strip()
+            if key and key not in keys:
+                keys.append(key)
+        if self.openrouter_api_key and self.openrouter_api_key not in keys:
+            keys.append(self.openrouter_api_key)
+        return keys
 
 
 settings = Settings()
