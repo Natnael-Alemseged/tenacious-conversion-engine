@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: conversion-engine
+    runtime: python
+    buildCommand: pip install -e . && playwright install chromium
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: HUBSPOT_API_KEY
+        sync: false
+      - key: CALCOM_API_KEY
+        sync: false
+      - key: CALCOM_BASE_URL
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: AFRICASTALKING_API_KEY
+        sync: false
+      - key: AFRICASTALKING_USERNAME
+        value: sandbox
