@@ -4,11 +4,11 @@ FastAPI backend scaffold for the Tenacious sales-automation conversion engine ch
 
 ## What This Repo Covers
 
-- inbound email and SMS webhook entrypoints
+- inbound email and SMS webhook entrypoints (Resend + Africa's Talking)
 - minimal SMS compliance controls for `STOP`, `HELP`, `UNSUBSCRIBE`, and `START`
-- placeholder integrations for HubSpot, Cal.com, and Langfuse
-- enrichment stubs for Crunchbase, layoffs, job-post signals, and AI maturity scoring
-- a sibling-repo evaluation wrapper for `tau2-bench`
+- integrations for HubSpot CRM, Cal.com booking, and Langfuse tracing
+- enrichment pipeline for Crunchbase firmographics, layoffs.fyi, job-post velocity, and AI maturity scoring (0–3)
+- `tau2-bench` evaluation harness (dev split only; held-out partition sealed)
 
 ## Architecture
 
@@ -151,11 +151,19 @@ backend/
 └── tau2-bench/
 ```
 
-Example:
+Baseline run (dev slice only — 30 tasks from the `train` split, 5 trials):
 
 ```bash
-python eval/run_baseline.py --domain retail --agent-llm gpt-4.1 --user-llm gpt-4.1 --num-tasks 5
+uv run python eval/run_baseline.py \
+  --domain retail \
+  --agent-llm openrouter/qwen/qwen3-next-80b-a3b-instruct \
+  --user-llm openrouter/qwen/qwen3-next-80b-a3b-instruct \
+  --trials 5 --num-tasks 30 --task-split-name train
 ```
+
+Results are appended to `eval/score_log.json` (mean pass@1 + 95% CI) and `eval/trace_log.jsonl` (per-trial references to raw simulation dirs in `tau2-bench/data/simulations/`).
+
+**Do not run with `--task-split-name test`** — that split is the sealed held-out partition and must not be touched until final evaluation.
 
 ## Deployment
 
@@ -163,4 +171,6 @@ python eval/run_baseline.py --domain retail --agent-llm gpt-4.1 --user-llm gpt-4
 
 ## Status
 
-This is a scaffold, not a full production implementation yet. The external integrations and enrichment steps still use placeholders and need to be wired to real services.
+Interim submission (Act I + Act II). Core integrations and enrichment stubs are in place. The dev-tier τ²-Bench baseline has been run and artifacts are in `eval/`. Remaining work for final submission: adversarial probe library (Act III), mechanism design (Act IV), and two-page decision memo (Act V).
+
+See `baseline.md` for the eval summary and `eval/score_log.json` for the full statistical breakdown.
