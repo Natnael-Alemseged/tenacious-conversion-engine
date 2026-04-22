@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from app.models.webhooks import InboundEmailEvent
-from app.workflows.lead_orchestrator import LeadOrchestrator
+from agent.models.webhooks import InboundEmailEvent
+from agent.workflows.lead_orchestrator import LeadOrchestrator
 
 
 class FakeSpan:

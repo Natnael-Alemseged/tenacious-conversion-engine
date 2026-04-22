@@ -3,8 +3,8 @@ import json
 import httpx
 import pytest
 
-from app.core.config import Settings
-from app.integrations.openrouter_llm import OpenRouterClient
+from agent.core.config import Settings
+from agent.integrations.openrouter_llm import OpenRouterClient
 
 
 def test_openrouter_key_pool_parses_multiple_keys() -> None:

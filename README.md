@@ -12,16 +12,46 @@ FastAPI backend scaffold for the Tenacious sales-automation conversion engine ch
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    Prospect["Synthetic Prospect"]
+    Email["Email Reply Webhook"]
+    SMS["SMS Webhook"]
+    API["FastAPI Service"]
+    Workflow["LeadOrchestrator"]
+    Enrichment["Enrichment Pipeline"]
+    HubSpot["HubSpot CRM"]
+    Resend["Resend Email"]
+    AT["Africa's Talking SMS"]
+    Cal["Cal.com Booking API"]
+    Langfuse["Langfuse Traces"]
+    Tau["tau2-bench Eval Harness"]
+
+    Prospect --> Email
+    Prospect --> SMS
+    Email --> API
+    SMS --> API
+    API --> Workflow
+    Workflow --> Enrichment
+    Workflow --> HubSpot
+    Workflow --> Resend
+    Workflow --> AT
+    Workflow --> Cal
+    Workflow --> Langfuse
+    Tau --> Workflow
+```
+
 ```text
 conversion-engine/
-├── app/
+├── agent/
 │   ├── api/routes/         # FastAPI endpoints
 │   ├── core/               # Settings and app config
 │   ├── enrichment/         # Signal-enrichment pipeline stubs
 │   ├── integrations/       # External service clients
 │   ├── models/             # Webhook payload models
 │   ├── storage/            # Local state scaffolding
-│   └── workflows/          # Orchestration layer
+│   ├── workflows/          # Orchestration layer
+│   └── requirements.txt    # Runtime deps (pip-installable)
 ├── eval/                   # tau2-bench wrapper scripts
 ├── probes/                 # Adversarial probe notes
 ├── tests/                  # FastAPI and webhook tests
@@ -43,7 +73,7 @@ conversion-engine/
    ```bash
    uv run pre-commit install && uv run pre-commit install --hook-type commit-msg
    ```
-5. Start the API with `uv run uvicorn app.main:app --reload`.
+5. Start the API with `uv run uvicorn agent.main:app --reload`.
 
 ## Development Workflow
 
@@ -81,7 +111,7 @@ git commit -m "fix: update auth and add new endpoint"
 
 ### One module per commit
 
-Commits that touch files from more than one `app/` subdirectory are rejected. Keep each commit scoped to a single module (e.g. `app/integrations` or `app/enrichment`). Files in `tests/`, `eval/`, `scripts/`, and root config are neutral and may be included alongside any module.
+Commits that touch files from more than one `agent/` subdirectory are rejected. Keep each commit scoped to a single module (e.g. `agent/integrations` or `agent/enrichment`). Files in `tests/`, `eval/`, `scripts/`, and root config are neutral and may be included alongside any module.
 
 To unstage a file: `git restore --staged <file>`
 

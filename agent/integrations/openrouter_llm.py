@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import settings
+from agent.core.config import settings
 
 RETRYABLE_STATUS_CODES = {402, 429, 500, 502, 503, 504}
 

@@ -2,7 +2,7 @@ import json
 
 import httpx
 
-from app.integrations.hubspot import HubSpotClient
+from agent.integrations.hubspot import HubSpotClient
 
 
 def test_upsert_contact_by_email_uses_batch_upsert() -> None:

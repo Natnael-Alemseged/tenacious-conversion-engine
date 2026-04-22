@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes import webhooks
-from app.main import app
+from agent.api.routes import webhooks
+from agent.main import app
 
 client = TestClient(app)
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from app.models.webhooks import DiscoveryCallBookingRequest
-from app.workflows.lead_orchestrator import LeadOrchestrator
+from agent.models.webhooks import DiscoveryCallBookingRequest
+from agent.workflows.lead_orchestrator import LeadOrchestrator
 
 router = APIRouter()
 orchestrator = LeadOrchestrator()

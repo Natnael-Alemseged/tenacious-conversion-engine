@@ -2,7 +2,7 @@ import json
 
 import httpx
 
-from app.integrations.calcom import BOOKINGS_API_VERSION, SLOTS_API_VERSION, CalComClient
+from agent.integrations.calcom import BOOKINGS_API_VERSION, SLOTS_API_VERSION, CalComClient
 
 
 def test_create_booking_uses_calcom_v2_api() -> None:

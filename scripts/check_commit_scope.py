@@ -17,8 +17,8 @@ def module_group(path: str) -> str | None:
     root = parts[0]
     if root in NEUTRAL_ROOTS:
         return None
-    if root == "app" and len(parts) >= 2:
-        return f"app/{parts[1]}"
+    if root == "agent" and len(parts) >= 2:
+        return f"agent/{parts[1]}"
     return None  # anything else is neutral
 
 

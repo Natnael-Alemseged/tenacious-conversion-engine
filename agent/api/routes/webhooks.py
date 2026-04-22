@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Request
 
-from app.core.config import settings
-from app.models.webhooks import InboundEmailEvent, InboundSmsEvent
-from app.storage.suppression import SmsSuppressionStore
-from app.workflows.lead_orchestrator import LeadOrchestrator
+from agent.core.config import settings
+from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
+from agent.storage.suppression import SmsSuppressionStore
+from agent.workflows.lead_orchestrator import LeadOrchestrator
 
 router = APIRouter()
 orchestrator = LeadOrchestrator()

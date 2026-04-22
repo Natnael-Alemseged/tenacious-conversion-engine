@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import settings
+from agent.core.config import settings
 
 BOOKINGS_API_VERSION = "2026-02-25"
 SLOTS_API_VERSION = "2024-09-04"

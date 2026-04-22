@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import subprocess
 import time
@@ -20,10 +21,43 @@ SCORE_LOG = EVAL_DIR / "score_log.json"
 TRACE_LOG = EVAL_DIR / "trace_log.jsonl"
 
 
+def _mean_confidence_interval_95(samples: list[float]) -> dict[str, float]:
+    if not samples:
+        return {
+            "mean": 0.0,
+            "ci_95_low": 0.0,
+            "ci_95_high": 0.0,
+            "ci_95_margin": 0.0,
+        }
+
+    mean = statistics.mean(samples)
+    if len(samples) == 1:
+        return {
+            "mean": mean,
+            "ci_95_low": mean,
+            "ci_95_high": mean,
+            "ci_95_margin": 0.0,
+        }
+
+    sample_stdev = statistics.stdev(samples)
+    margin = 1.96 * (sample_stdev / math.sqrt(len(samples)))
+    return {
+        "mean": mean,
+        "ci_95_low": max(0.0, mean - margin),
+        "ci_95_high": min(1.0, mean + margin),
+        "ci_95_margin": margin,
+    }
+
+
 def _extract_trial_rewards(results_path: Path) -> list[float]:
     data = json.loads(results_path.read_text())
     simulations = data.get("simulations", [])
-    return [float(sim.get("reward", 0.0)) for sim in simulations]
+    return [float(sim.get("reward_info", {}).get("reward") or 0.0) for sim in simulations]
+
+
+def _model_slug(llm: str) -> str:
+    """Short filesystem-safe slug from a model string."""
+    return llm.split("/")[-1][:32].replace(":", "-")
 
 
 def run_trial(
@@ -35,7 +69,8 @@ def run_trial(
     task_ids: list[str] | None,
     trial_index: int,
 ) -> dict:
-    save_to = f"conversion-engine-baseline-{domain}-trial-{trial_index}"
+    slug = _model_slug(agent_llm)
+    save_to = f"ce-baseline-{domain}-{slug}-t{trial_index}"
     cmd = [
         "uv",
         "run",
@@ -53,6 +88,7 @@ def run_trial(
         "1",
         "--save-to",
         save_to,
+        "--auto-resume",
     ]
     if task_ids:
         cmd.extend(["--task-ids", *task_ids])
@@ -83,11 +119,11 @@ def run_trial(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--domain", default="retail")
-    parser.add_argument("--agent-llm", default="gpt-4.1")
-    parser.add_argument("--user-llm", default="gpt-4.1")
+    parser.add_argument("--agent-llm", default="openrouter/qwen/qwen3-next-80b-a3b-instruct")
+    parser.add_argument("--user-llm", default="openrouter/qwen/qwen3-next-80b-a3b-instruct")
     parser.add_argument("--trials", type=int, default=5)
-    parser.add_argument("--task-split-name", default="base")
-    parser.add_argument("--num-tasks", type=int, default=5)
+    parser.add_argument("--task-split-name", default="train")
+    parser.add_argument("--num-tasks", type=int, default=30)
     parser.add_argument("--task-ids", nargs="+")
     args = parser.parse_args()
 
@@ -105,6 +141,7 @@ def main() -> None:
     ]
 
     pass_scores = [trial["pass_at_1"] for trial in results]
+    ci = _mean_confidence_interval_95(pass_scores)
     summary = {
         "domain": args.domain,
         "agent_llm": args.agent_llm,
@@ -113,7 +150,10 @@ def main() -> None:
         "num_tasks": args.num_tasks,
         "task_ids": args.task_ids,
         "trials": args.trials,
-        "mean_pass_at_1": statistics.mean(pass_scores) if pass_scores else 0.0,
+        "mean_pass_at_1": ci["mean"],
+        "ci_95_low": ci["ci_95_low"],
+        "ci_95_high": ci["ci_95_high"],
+        "ci_95_margin": ci["ci_95_margin"],
         "min_pass_at_1": min(pass_scores) if pass_scores else 0.0,
         "max_pass_at_1": max(pass_scores) if pass_scores else 0.0,
         "results": results,

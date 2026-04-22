@@ -2,7 +2,7 @@ import json
 
 import httpx
 
-from app.integrations.resend_email import ResendClient
+from agent.integrations.resend_email import ResendClient
 
 
 def test_send_email_uses_resend_api(monkeypatch) -> None:
@@ -16,7 +16,7 @@ def test_send_email_uses_resend_api(monkeypatch) -> None:
         return httpx.Response(200, json={"id": "email_123"})
 
     monkeypatch.setattr(
-        "app.integrations.resend_email.settings.resend_from_email",
+        "agent.integrations.resend_email.settings.resend_from_email",
         "team@example.com",
     )
     client = ResendClient(

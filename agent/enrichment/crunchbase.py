@@ -1,4 +1,4 @@
-from app.core.config import settings  # noqa: F401
+from agent.core.config import settings  # noqa: F401
 
 
 def lookup(company_name: str) -> dict | None:

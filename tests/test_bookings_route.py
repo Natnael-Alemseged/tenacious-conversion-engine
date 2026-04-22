@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.api.routes import bookings
-from app.main import app
+from agent.api.routes import bookings
+from agent.main import app
 
 
 class FakeOrchestrator:

@@ -1,4 +1,4 @@
-from app.core.config import settings  # noqa: F401
+from agent.core.config import settings  # noqa: F401
 
 
 def check(company_name: str, days: int = 120) -> list[dict]:

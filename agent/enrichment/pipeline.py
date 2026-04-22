@@ -1,4 +1,4 @@
-from app.enrichment import ai_maturity, crunchbase, job_posts, layoffs
+from agent.enrichment import ai_maturity, crunchbase, job_posts, layoffs
 
 
 def run(company_name: str, careers_url: str = "") -> dict:

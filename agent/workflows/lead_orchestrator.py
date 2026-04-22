@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.integrations.africastalking_sms import AfricasTalkingSmsClient
-from app.integrations.calcom import CalComClient
-from app.integrations.hubspot import HubSpotClient
-from app.integrations.langfuse import LangfuseClient
-from app.integrations.resend_email import ResendClient
-from app.models.webhooks import InboundEmailEvent, InboundSmsEvent
+from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
+from agent.integrations.calcom import CalComClient
+from agent.integrations.hubspot import HubSpotClient
+from agent.integrations.langfuse import LangfuseClient
+from agent.integrations.resend_email import ResendClient
+from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 
 
 class LeadOrchestrator:

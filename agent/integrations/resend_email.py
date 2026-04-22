@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import settings
+from agent.core.config import settings
 
 
 class ResendClient:

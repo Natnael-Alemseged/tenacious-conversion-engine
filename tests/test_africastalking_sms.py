@@ -1,6 +1,6 @@
 import httpx
 
-from app.integrations.africastalking_sms import AfricasTalkingSmsClient
+from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
 
 
 def test_send_sms_uses_africas_talking_api() -> None:
