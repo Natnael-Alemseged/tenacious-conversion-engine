@@ -47,10 +47,16 @@ class FakeSmsClient:
         return {"SMSMessageData": {"Recipients": [{"status": "Success"}]}, **kwargs}
 
 
+class FakeCalComClient:
+    def create_booking(self, **kwargs) -> dict:
+        return {"status": "success", "data": {"uid": "booking_uid_123"}, **kwargs}
+
+
 def test_handle_email_records_trace_and_span() -> None:
     langfuse = FakeLangfuseClient()
     orchestrator = LeadOrchestrator(
         hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
         langfuse=langfuse,
         resend=FakeResendClient(),
         sms=FakeSmsClient(),
@@ -81,6 +87,7 @@ def test_send_follow_up_sms_records_trace_and_returns_sms_response() -> None:
     langfuse = FakeLangfuseClient()
     orchestrator = LeadOrchestrator(
         hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
         langfuse=langfuse,
         resend=FakeResendClient(),
         sms=FakeSmsClient(),
@@ -95,3 +102,38 @@ def test_send_follow_up_sms_records_trace_and_returns_sms_response() -> None:
     assert result["to_phone"] == "+251911000000"
     assert ("trace.end", {"name": "send_follow_up_sms"}) in langfuse.events
     assert any(event[0] == "span.update" for event in langfuse.events)
+
+
+def test_book_discovery_call_records_trace_and_returns_booking() -> None:
+    langfuse = FakeLangfuseClient()
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=langfuse,
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    result = orchestrator.book_discovery_call(
+        attendee_name="Jane Doe",
+        attendee_email="jane@example.com",
+        start="2026-04-25T09:00:00Z",
+        timezone="Africa/Addis_Ababa",
+    )
+
+    assert result["data"]["uid"] == "booking_uid_123"
+    assert ("trace.end", {"name": "book_discovery_call"}) in langfuse.events
+    assert (
+        "span.start",
+        {
+            "name": "calcom.create_booking",
+            "input": {
+                "attendee_name": "Jane Doe",
+                "attendee_email": "jane@example.com",
+                "start": "2026-04-25T09:00:00Z",
+                "timezone": "Africa/Addis_Ababa",
+                "length_in_minutes": 30,
+            },
+            "output": None,
+        },
+    ) in langfuse.events
