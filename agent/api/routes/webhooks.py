@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
@@ -18,6 +19,23 @@ def _suppression_store() -> SmsSuppressionStore:
     return SmsSuppressionStore(settings.sms_suppression_path)
 
 
+def _route_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, httpx.HTTPStatusError):
+        detail = (
+            f"Upstream integration returned HTTP {exc.response.status_code}: "
+            f"{exc.response.text[:300]}"
+        )
+        return HTTPException(status_code=502, detail=detail)
+    if isinstance(exc, httpx.RequestError):
+        return HTTPException(
+            status_code=503,
+            detail=f"Upstream integration is unreachable: {exc}",
+        )
+    return HTTPException(status_code=500, detail=str(exc))
+
+
 @router.post("/email")
 def inbound_email(event: InboundEmailEvent) -> dict[str, str]:
     if event.event_type in BOUNCE_EVENT_TYPES:
@@ -27,7 +45,7 @@ def inbound_email(event: InboundEmailEvent) -> dict[str, str]:
     try:
         orchestrator.handle_email(event)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise _route_error(exc) from exc
     return {"status": "accepted"}
 
 
@@ -78,5 +96,5 @@ async def inbound_sms(request: Request) -> dict[str, str]:
     try:
         orchestrator.handle_sms(event)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise _route_error(exc) from exc
     return {"status": "accepted"}
