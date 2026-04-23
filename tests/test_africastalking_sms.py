@@ -1,6 +1,7 @@
 import httpx
+import pytest
 
-from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
+from agent.integrations.africastalking_sms import AfricasTalkingSendError, AfricasTalkingSmsClient
 
 
 def test_send_sms_uses_africas_talking_api() -> None:
@@ -14,9 +15,7 @@ def test_send_sms_uses_africas_talking_api() -> None:
         return httpx.Response(
             200,
             json={
-                "SMSMessageData": {
-                    "Recipients": [{"status": "Success", "messageId": "ATXid_123"}]
-                }
+                "SMSMessageData": {"Recipients": [{"status": "Success", "messageId": "ATXid_123"}]}
             },
         )
 
@@ -39,3 +38,19 @@ def test_send_sms_uses_africas_talking_api() -> None:
     assert "username=sandbox" in captured["body"]
     assert "to=%2B251911000000" in captured["body"]
     assert "from=12345" in captured["body"]
+
+
+def test_send_sms_raises_typed_error_on_provider_failure() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="gateway error")
+
+    client = AfricasTalkingSmsClient(
+        username="sandbox",
+        api_key="at_test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(AfricasTalkingSendError) as exc:
+        client.send_sms(to_phone="+251911000000", message="hello world")
+
+    assert exc.value.status_code == 500

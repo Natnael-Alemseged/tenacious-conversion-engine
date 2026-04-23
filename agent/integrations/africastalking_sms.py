@@ -7,6 +7,12 @@ import httpx
 from agent.core.config import settings
 
 
+class AfricasTalkingSendError(Exception):
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(f"Africa's Talking send failed ({status_code}): {message}")
+        self.status_code = status_code
+
+
 class AfricasTalkingSmsClient:
     def __init__(
         self,
@@ -17,9 +23,7 @@ class AfricasTalkingSmsClient:
         timeout: float = 10.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self.username = (
-            username if username is not None else settings.africastalking_username
-        )
+        self.username = username if username is not None else settings.africastalking_username
         self.api_key = api_key if api_key is not None else settings.africastalking_api_key
         self.short_code = (
             short_code if short_code is not None else settings.africastalking_short_code
@@ -50,9 +54,14 @@ class AfricasTalkingSmsClient:
         if enqueue:
             data["enqueue"] = 1
 
-        response = self.client.post("/version1/messaging", data=data)
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.client.post("/version1/messaging", data=data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise AfricasTalkingSendError(exc.response.status_code, exc.response.text) from exc
+        except httpx.RequestError as exc:
+            raise AfricasTalkingSendError(0, str(exc)) from exc
 
     def _default_base_url(self, username: str) -> str:
         if username == "sandbox":
