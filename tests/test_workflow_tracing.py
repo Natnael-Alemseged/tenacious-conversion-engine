@@ -254,6 +254,59 @@ def test_send_outbound_email_none_segment_falls_back_to_general(monkeypatch) -> 
     assert result["subject"] == "Co: quick thought"
 
 
+def test_outbound_email_routes_to_sink_when_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        False,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_sink_email",
+        "sink@tenacious.example",
+    )
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+    result = orchestrator.send_outbound_email(
+        to_email="real-prospect@example.com",
+        company_name="Co",
+        signal_summary="Signal here.",
+        icp_segment=0,
+        confidence=0.6,
+    )
+    assert result["to_email"] == "sink@tenacious.example"
+    assert result["tags"]["outbound_mode"] == "sink"
+
+
+def test_outbound_sms_routes_to_sink_when_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        False,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_sink_phone",
+        "+15555550123",
+    )
+    langfuse = FakeLangfuseClient()
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=langfuse,
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+    result = orchestrator.send_warm_lead_sms(
+        to_phone="+251911000000",
+        company_name="Acme",
+        scheduling_hint="We found a relevant hiring signal.",
+        prior_email_replied=True,
+    )
+    assert result["to_phone"] == "+15555550123"
+
+
 def test_bounce_handler_can_be_registered() -> None:
     recorded: list[tuple[str, str, str]] = []
 
