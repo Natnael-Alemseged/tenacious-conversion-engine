@@ -30,9 +30,9 @@ class InboundEmailEvent(BaseModel):
 class InboundSmsEvent(BaseModel):
     """Africa's Talking inbound SMS — parsed from form-encoded POST."""
 
-    from_number: str
+    from_number: str = Field(min_length=1)
     to: str = ""
-    text: str
+    text: str = Field(min_length=1)
     date: str = ""
     message_id: str = ""
 
