@@ -33,6 +33,7 @@ class HubSpotClient:
         properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         props = dict(properties or {})
+        props.setdefault("lead_source", source)
         if "@" in identifier:
             props["email"] = identifier
             response = self.client.post(

@@ -28,6 +28,7 @@ def test_upsert_contact_by_email_uses_batch_upsert() -> None:
     assert captured["authorization"] == "Bearer test-token"
     assert captured["json"]["inputs"][0]["idProperty"] == "email"
     assert captured["json"]["inputs"][0]["properties"]["email"] == "lead@example.com"
+    assert captured["json"]["inputs"][0]["properties"]["lead_source"] == "email"
 
 
 def test_upsert_contact_by_phone_searches_then_creates() -> None:
@@ -54,3 +55,4 @@ def test_upsert_contact_by_phone_searches_then_creates() -> None:
     assert requests[0][2]["filterGroups"][0]["filters"][0]["propertyName"] == "phone"
     assert requests[1][1] == "/crm/v3/objects/contacts"
     assert requests[1][2]["properties"]["phone"] == "+251911000000"
+    assert requests[1][2]["properties"]["lead_source"] == "sms"
