@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = ""
 
+    # Outbound safety (Tenacious brief): sink routing unless explicitly enabled
+    outbound_enabled: bool = False
+    outbound_sink_email: str = ""
+    outbound_sink_phone: str = ""
+
     # Africa's Talking
     africastalking_username: str = "sandbox"
     africastalking_api_key: str = ""
