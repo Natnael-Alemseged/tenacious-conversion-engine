@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from agent.enrichment.ai_maturity import confidence_phrasing, score
 from agent.enrichment.pipeline import run
+from agent.enrichment.schemas import HiringSignalBrief
 
 # ---------------------------------------------------------------------------
 # confidence_phrasing
@@ -98,4 +99,8 @@ def test_pipeline_icp_segment_defaults_to_zero_when_no_signals(tmp_path, monkeyp
     )
 
     result = run("UnknownCorp")
-    assert result["icp_segment"] == 0
+    assert result.icp_segment == 0
+    roundtrip = HiringSignalBrief.model_validate(result.model_dump(mode="json"))
+    assert roundtrip.overall_confidence == result.overall_confidence
+    assert result.signals.funding.confidence_meta.tier == "none"
+    assert result.signals.funding.confidence_meta.rationale_codes == ("funding_no_company_context",)
