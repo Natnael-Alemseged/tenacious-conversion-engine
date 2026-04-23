@@ -52,7 +52,7 @@ conversion-engine/
 ├── agent/
 │   ├── api/routes/         # FastAPI endpoints
 │   ├── core/               # Settings and app config
-│   ├── enrichment/         # Signal-enrichment pipeline stubs
+│   ├── enrichment/         # Signal-enrichment pipeline + artifacts
 │   ├── integrations/       # External service clients
 │   ├── models/             # Webhook payload models
 │   ├── storage/            # Local state scaffolding
@@ -177,6 +177,14 @@ Results are appended to `eval/score_log.json` (mean pass@1 + 95% CI) and `eval/t
 
 ## Status
 
-Interim submission (Act I + Act II). Core integrations and enrichment stubs are in place. The dev-tier τ²-Bench baseline has been run and artifacts are in `eval/`. Remaining work for final submission: adversarial probe library (Act III), mechanism design (Act IV), and two-page decision memo (Act V).
+Interim submission candidate: Act I is complete, and the core Act II loop is partially implemented. The repo currently covers email-first outreach, warm-lead SMS, HubSpot write-back, Cal.com booking, hiring-signal enrichment, sink-routing safety, and bench gating.
+
+Act II items still deferred:
+
+- `competitor_gap_brief.json`
+- HubSpot MCP migration (current implementation uses direct HubSpot HTTP APIs)
+- richer bench-summary matching beyond the current keyword gate
+
+Remaining work for final submission: adversarial probe library (Act III), mechanism design (Act IV), and two-page decision memo (Act V).
 
 See `baseline.md` for the eval summary and `eval/score_log.json` for the full statistical breakdown.
