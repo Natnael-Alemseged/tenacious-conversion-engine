@@ -8,9 +8,19 @@ from agent.core.config import settings
 
 
 class ResendSendError(Exception):
-    def __init__(self, status_code: int, message: str) -> None:
+    """Raised when Resend returns an error response or the request cannot complete."""
+
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        error_kind: str = "unknown",
+    ) -> None:
         super().__init__(f"Resend send failed ({status_code}): {message}")
         self.status_code = status_code
+        self.error_kind = error_kind
+        self.detail = message
 
 
 class ResendClient:
@@ -57,9 +67,13 @@ class ResendClient:
             return response.json()
         except httpx.HTTPStatusError as exc:
             body = exc.response.text
-            raise ResendSendError(exc.response.status_code, body) from exc
+            raise ResendSendError(
+                exc.response.status_code,
+                body,
+                error_kind="upstream_http",
+            ) from exc
         except httpx.RequestError as exc:
-            raise ResendSendError(0, str(exc)) from exc
+            raise ResendSendError(0, str(exc), error_kind="request_transport") from exc
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
