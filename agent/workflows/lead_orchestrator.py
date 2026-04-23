@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -10,12 +11,59 @@ from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
 from agent.integrations.calcom import CalComClient
 from agent.integrations.hubspot import HubSpotClient
 from agent.integrations.langfuse import LangfuseClient
-from agent.integrations.resend_email import ResendClient
+from agent.integrations.resend_email import ResendClient, ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
+from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
 
 DownstreamEventHandler = (
     Callable[[str, dict[str, Any], InboundEmailEvent | InboundSmsEvent], None] | None
 )
+
+_log = logging.getLogger(__name__)
+
+
+def _email_domain(email: str) -> str:
+    if "@" not in email:
+        return ""
+    return email.rsplit("@", 1)[-1].lower()[:255]
+
+
+def _outbound_email_log_extra(
+    *,
+    outcome: str,
+    phase: str,
+    outbound_mode: str = "",
+    intended_to: str = "",
+    routed_to: str = "",
+    icp_segment: int | None = None,
+    ai_maturity_score: int | None = None,
+    has_crunchbase: bool | None = None,
+    phrasing: str = "",
+    error_type: str = "",
+    error_kind: str = "",
+    http_status: int | None = None,
+    hubspot_source: str = "",
+) -> dict[str, object]:
+    """Structured fields for log aggregation (keys avoid stdlib LogRecord collisions)."""
+    return {
+        "oe_component": "outbound_email",
+        "oe_metric": "outbound_email.send",
+        "oe_outcome": outcome,
+        "oe_phase": phase,
+        "oe_outbound_mode": outbound_mode,
+        "oe_intended_email_domain": _email_domain(intended_to),
+        "oe_routed_email_domain": _email_domain(routed_to),
+        "oe_icp_segment": "" if icp_segment is None else str(icp_segment),
+        "oe_ai_maturity_score": "" if ai_maturity_score is None else str(ai_maturity_score),
+        "oe_has_crunchbase": ""
+        if has_crunchbase is None
+        else ("true" if has_crunchbase else "false"),
+        "oe_phrasing": phrasing,
+        "oe_error_type": error_type,
+        "oe_error_kind": error_kind,
+        "oe_http_status": "" if http_status is None else str(http_status),
+        "oe_hubspot_source": hubspot_source,
+    }
 
 
 def _now_iso() -> str:
@@ -191,11 +239,38 @@ class LeadOrchestrator:
         subject = _subjects[seg]
         opener = _openers[seg]
 
-        _require_bench_gate(
-            bench_to_brief_gate_passed=bench_to_brief_gate_passed,
-            operation="outbound_email",
-        )
-        routed_to, outbound_audit = _outbound_route(intended_to=to_email, channel="email")
+        try:
+            _require_bench_gate(
+                bench_to_brief_gate_passed=bench_to_brief_gate_passed,
+                operation="outbound_email",
+            )
+        except ValueError as exc:
+            _log.error(
+                "outbound_email_send",
+                extra=_outbound_email_log_extra(
+                    outcome="failure",
+                    phase="bench_gate",
+                    intended_to=to_email,
+                    error_type=type(exc).__name__,
+                ),
+                exc_info=exc,
+            )
+            raise
+
+        try:
+            routed_to, outbound_audit = _outbound_route(intended_to=to_email, channel="email")
+        except ValueError as exc:
+            _log.error(
+                "outbound_email_send",
+                extra=_outbound_email_log_extra(
+                    outcome="failure",
+                    phase="routing",
+                    intended_to=to_email,
+                    error_type=type(exc).__name__,
+                ),
+                exc_info=exc,
+            )
+            raise
 
         phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
         if phrasing == "direct":
@@ -231,10 +306,14 @@ class LeadOrchestrator:
         if ai_maturity_score is not None:
             enrichment_props["ai_maturity_score"] = str(ai_maturity_score)
 
-        with self.langfuse.trace_workflow(
-            "send_outbound_email",
-            {"to_email": to_email, "company_name": company_name},
-        ):
+        trace_payload: dict[str, Any] = {
+            "to_email": to_email,
+            "company_name": company_name,
+            "icp_segment": icp_segment,
+            "ai_maturity_score": ai_maturity_score,
+            "confidence": confidence,
+        }
+        with self.langfuse.trace_workflow("send_outbound_email", trace_payload):
             with self.langfuse.span(
                 "resend.send_email",
                 input={
@@ -243,21 +322,106 @@ class LeadOrchestrator:
                     "crunchbase_id": crunchbase_id,
                 },
             ) as span:
-                result = self.resend.send_email(
-                    to_email=routed_to,
-                    subject=subject,
-                    html=html,
-                    tags={
-                        "tenacious_draft": "true",
-                        "outbound_mode": str(outbound_audit["outbound_mode"]),
-                    },
-                )
+                try:
+                    result = self.resend.send_email(
+                        to_email=routed_to,
+                        subject=subject,
+                        html=html,
+                        tags={
+                            "tenacious_draft": "true",
+                            "outbound_mode": str(outbound_audit["outbound_mode"]),
+                        },
+                    )
+                except ResendSendError as exc:
+                    if span:
+                        span.update(
+                            output={
+                                "ok": False,
+                                "error_kind": exc.error_kind,
+                                "http_status": exc.status_code,
+                                "detail_excerpt": (exc.detail or "")[:500],
+                            }
+                        )
+                    _log.error(
+                        "outbound_email_send",
+                        extra=_outbound_email_log_extra(
+                            outcome="failure",
+                            phase="resend",
+                            outbound_mode=str(outbound_audit["outbound_mode"]),
+                            intended_to=to_email,
+                            routed_to=routed_to,
+                            icp_segment=icp_segment,
+                            ai_maturity_score=ai_maturity_score,
+                            has_crunchbase=crunchbase_id is not None,
+                            phrasing=phrasing,
+                            error_type=type(exc).__name__,
+                            error_kind=exc.error_kind,
+                            http_status=exc.status_code,
+                        ),
+                        exc_info=exc,
+                    )
+                    raise
                 if span:
                     span.update(output=result)
-            self.hubspot.upsert_contact(
-                identifier=to_email,
-                source="outbound_email",
-                properties=enrichment_props,
+
+            with self.langfuse.span(
+                "hubspot.upsert_contact",
+                input={
+                    "identifier": to_email,
+                    "source": "outbound_email",
+                    "outbound_audit": outbound_audit,
+                },
+            ) as hs_span:
+                try:
+                    self.hubspot.upsert_contact(
+                        identifier=to_email,
+                        source="outbound_email",
+                        properties=enrichment_props,
+                    )
+                except Exception as exc:
+                    if hs_span:
+                        hs_span.update(
+                            output={
+                                "ok": False,
+                                "error_type": type(exc).__name__,
+                                "message_excerpt": str(exc)[:500],
+                            }
+                        )
+                    _log.error(
+                        "outbound_email_send",
+                        extra=_outbound_email_log_extra(
+                            outcome="failure",
+                            phase="hubspot",
+                            outbound_mode=str(outbound_audit["outbound_mode"]),
+                            intended_to=to_email,
+                            routed_to=routed_to,
+                            icp_segment=icp_segment,
+                            ai_maturity_score=ai_maturity_score,
+                            has_crunchbase=crunchbase_id is not None,
+                            phrasing=phrasing,
+                            error_type=type(exc).__name__,
+                            hubspot_source="outbound_email",
+                        ),
+                        exc_info=exc,
+                    )
+                    raise
+                if hs_span:
+                    hs_span.update(output={"ok": True})
+
+            _log.info(
+                "outbound_email_send",
+                extra=_outbound_email_log_extra(
+                    outcome="success",
+                    phase="complete",
+                    outbound_mode=str(outbound_audit["outbound_mode"]),
+                    intended_to=to_email,
+                    routed_to=routed_to,
+                    icp_segment=icp_segment,
+                    ai_maturity_score=ai_maturity_score,
+                    has_crunchbase=crunchbase_id is not None,
+                    phrasing=phrasing,
+                    hubspot_source="outbound_email",
+                ),
             )
             return result
 
@@ -370,12 +534,20 @@ class LeadOrchestrator:
                 "hubspot.upsert_contact_post_booking",
                 input={"identifier": attendee_email},
             ) as span:
-                hs_result = self.hubspot.upsert_contact(
-                    identifier=attendee_email,
-                    source="calcom_booking",
-                    properties=hs_props,
+                outcome = upsert_contact_with_booking_retries(
+                    lambda: self.hubspot.upsert_contact(
+                        identifier=attendee_email,
+                        source="calcom_booking",
+                        properties=hs_props,
+                    ),
+                    booking=booking,
+                    contact_identifier=attendee_email,
                 )
+                hs_payload = {
+                    **outcome.hubspot_result,
+                    "crm_writeback_attempts": outcome.attempts,
+                }
                 if span:
-                    span.update(output=hs_result)
+                    span.update(output=hs_payload)
 
             return booking

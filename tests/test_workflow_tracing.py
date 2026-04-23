@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 
 import pytest
 
+from agent.integrations.resend_email import ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.workflows.lead_orchestrator import LeadOrchestrator
 
@@ -109,6 +111,45 @@ def test_send_follow_up_sms_records_trace_and_returns_sms_response(monkeypatch) 
     assert result["to_phone"] == "+251911000000"
     assert ("trace.end", {"name": "send_warm_lead_sms"}) in langfuse.events
     assert any(event[0] == "span.update" for event in langfuse.events)
+
+
+def test_book_discovery_call_retries_transient_hubspot_then_succeeds(monkeypatch) -> None:
+    monkeypatch.setattr("agent.workflows.booking_crm_writeback.time.sleep", lambda _s: None)
+
+    class FlakyHubSpotClient:
+        def __init__(self) -> None:
+            self.tries = 0
+
+        def upsert_contact(
+            self, identifier: str, source: str, properties: dict | None = None
+        ) -> dict:
+            self.tries += 1
+            if self.tries < 2:
+                raise TimeoutError("hubspot mcp")
+            return {"identifier": identifier, "source": source, "properties": properties or {}}
+
+    hubspot = FlakyHubSpotClient()
+    orchestrator = LeadOrchestrator(
+        hubspot=hubspot,
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    result = orchestrator.book_discovery_call(
+        attendee_name="Jane Doe",
+        attendee_email="jane@example.com",
+        start="2026-04-25T09:00:00Z",
+        timezone="Africa/Addis_Ababa",
+    )
+
+    assert result["data"]["uid"] == "booking_uid_123"
+    assert hubspot.tries == 2
+    assert any(
+        e[0] == "span.update" and isinstance(e[1], dict) and e[1].get("crm_writeback_attempts") == 2
+        for e in orchestrator.langfuse.events
+    )
 
 
 def test_book_discovery_call_records_trace_and_returns_booking() -> None:
@@ -320,6 +361,63 @@ def test_outbound_email_requires_bench_gate(monkeypatch) -> None:
             icp_segment=1,
             bench_to_brief_gate_passed=False,
         )
+
+
+def test_send_outbound_email_logs_structured_error_on_resend_failure(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orch, langfuse, _ = _make_orchestrator(monkeypatch)
+
+    class FailResend:
+        def send_email(self, **kwargs: object) -> dict:
+            raise ResendSendError(400, '{"error":"bad"}', error_kind="upstream_http")
+
+    orch.resend = FailResend()
+
+    with caplog.at_level(logging.ERROR, logger="agent.workflows.lead_orchestrator"):
+        with pytest.raises(ResendSendError):
+            orch.send_outbound_email(
+                to_email="lead@acme.com",
+                company_name="Acme",
+                signal_summary="Signal.",
+                icp_segment=2,
+                confidence=0.7,
+            )
+
+    err_records = [r for r in caplog.records if r.getMessage() == "outbound_email_send"]
+    assert err_records, "expected structured outbound_email_send error log"
+    rec = err_records[-1]
+    assert rec.oe_component == "outbound_email"
+    assert rec.oe_outcome == "failure"
+    assert rec.oe_phase == "resend"
+    assert rec.oe_http_status == "400"
+    assert rec.oe_error_kind == "upstream_http"
+    assert rec.oe_intended_email_domain == "acme.com"
+    assert rec.oe_icp_segment == "2"
+
+    span_updates = [e for e in langfuse.events if e[0] == "span.update"]
+    assert any(
+        isinstance(e[1], dict) and e[1].get("ok") is False and e[1].get("http_status") == 400
+        for e in span_updates
+    )
+
+
+def test_send_outbound_email_logs_success_metric(caplog, monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
+    with caplog.at_level(logging.INFO, logger="agent.workflows.lead_orchestrator"):
+        orch.send_outbound_email(
+            to_email="lead@acme.com",
+            company_name="Acme",
+            signal_summary="Signal.",
+            icp_segment=1,
+            confidence=0.9,
+        )
+    info_records = [r for r in caplog.records if r.getMessage() == "outbound_email_send"]
+    assert info_records
+    assert info_records[-1].oe_outcome == "success"
+    assert info_records[-1].oe_phase == "complete"
+    assert info_records[-1].oe_metric == "outbound_email.send"
 
 
 def test_booking_requires_bench_gate() -> None:
