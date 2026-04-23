@@ -227,6 +227,10 @@ class LeadOrchestrator:
                     to_email=routed_to,
                     subject=subject,
                     html=html,
+                    tags={
+                        "tenacious_draft": "true",
+                        "outbound_mode": str(outbound_audit["outbound_mode"]),
+                    },
                 )
                 if span:
                     span.update(output=result)
