@@ -12,7 +12,9 @@ import threading
 from typing import Any
 from unittest.mock import MagicMock
 
-from agent.integrations.hubspot import HubSpotClient
+import pytest
+
+from agent.integrations.hubspot import HubSpotClient, HubSpotMcpError
 
 
 def _make_client(responses: dict[str, Any]) -> tuple[HubSpotClient, list[tuple[str, dict]]]:
@@ -154,3 +156,17 @@ def test_update_contact_sends_update_request() -> None:
     assert calls[0][1]["objectType"] == "contacts"
     assert calls[0][1]["inputs"][0]["id"] == "99"
     assert calls[0][1]["inputs"][0]["properties"]["firstname"] == "Jane"
+
+
+def test_create_contact_raises_on_empty_results() -> None:
+    client, _ = _make_client(
+        {
+            "hubspot-search-objects": {"results": []},
+            "hubspot-batch-create-objects": {"results": []},
+        }
+    )
+
+    with pytest.raises(HubSpotMcpError) as excinfo:
+        client.upsert_contact("lead@example.com", source="email")
+
+    assert excinfo.value.error_kind == "empty_results"

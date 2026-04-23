@@ -54,3 +54,20 @@ def test_send_sms_raises_typed_error_on_provider_failure() -> None:
         client.send_sms(to_phone="+251911000000", message="hello world")
 
     assert exc.value.status_code == 500
+    assert exc.value.error_kind == "upstream_http"
+
+
+def test_send_sms_raises_typed_error_on_malformed_json() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    client = AfricasTalkingSmsClient(
+        username="sandbox",
+        api_key="at_test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(AfricasTalkingSendError) as exc:
+        client.send_sms(to_phone="+251911000000", message="hello world")
+
+    assert exc.value.error_kind == "malformed_response"

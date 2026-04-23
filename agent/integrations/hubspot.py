@@ -12,6 +12,13 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from agent.core.config import settings
 
 
+class HubSpotMcpError(RuntimeError):
+    def __init__(self, message: str, *, error_kind: str = "mcp_error") -> None:
+        super().__init__(message)
+        self.error_kind = error_kind
+        self.detail = message
+
+
 class HubSpotClient:
     """HubSpot CRM client backed by the @hubspot/mcp-server MCP process.
 
@@ -72,7 +79,7 @@ class HubSpotClient:
                     continue
         if getattr(result, "isError", False):
             message = "\n".join(texts) if texts else "Unknown HubSpot MCP error"
-            raise RuntimeError(message)
+            raise HubSpotMcpError(message)
         if texts:
             return {"raw": "\n".join(texts)}
         return {}
@@ -131,7 +138,12 @@ class HubSpotClient:
             {"objectType": "contacts", "inputs": [{"properties": properties}]},
         )
         results = result.get("results", [])
-        return results[0] if results else result
+        if results:
+            return results[0]
+        raise HubSpotMcpError(
+            "HubSpot MCP create contact returned no results.",
+            error_kind="empty_results",
+        )
 
     def update_contact(self, contact_id: str, properties: dict[str, Any]) -> dict[str, Any]:
         result = self._call(
@@ -144,4 +156,9 @@ class HubSpotClient:
             },
         )
         results = result.get("results", [])
-        return results[0] if results else result
+        if results:
+            return results[0]
+        raise HubSpotMcpError(
+            "HubSpot MCP update contact returned no results.",
+            error_kind="empty_results",
+        )

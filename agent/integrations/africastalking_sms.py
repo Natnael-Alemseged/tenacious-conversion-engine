@@ -8,9 +8,17 @@ from agent.core.config import settings
 
 
 class AfricasTalkingSendError(Exception):
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        error_kind: str = "unknown",
+    ) -> None:
         super().__init__(f"Africa's Talking send failed ({status_code}): {message}")
         self.status_code = status_code
+        self.error_kind = error_kind
+        self.detail = message
 
 
 class AfricasTalkingSmsClient:
@@ -57,11 +65,32 @@ class AfricasTalkingSmsClient:
         try:
             response = self.client.post("/version1/messaging", data=data)
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+            if not isinstance(body, dict):
+                raise AfricasTalkingSendError(
+                    response.status_code,
+                    "Expected Africa's Talking JSON object response.",
+                    error_kind="malformed_response",
+                )
+            return body
         except httpx.HTTPStatusError as exc:
-            raise AfricasTalkingSendError(exc.response.status_code, exc.response.text) from exc
+            raise AfricasTalkingSendError(
+                exc.response.status_code,
+                exc.response.text,
+                error_kind="upstream_http",
+            ) from exc
+        except ValueError as exc:
+            raise AfricasTalkingSendError(
+                0,
+                f"Invalid JSON from Africa's Talking: {exc}",
+                error_kind="malformed_response",
+            ) from exc
         except httpx.RequestError as exc:
-            raise AfricasTalkingSendError(0, str(exc)) from exc
+            raise AfricasTalkingSendError(
+                0,
+                str(exc),
+                error_kind="request_transport",
+            ) from exc
 
     def _default_base_url(self, username: str) -> str:
         if username == "sandbox":
