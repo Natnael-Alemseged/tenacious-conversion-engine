@@ -79,3 +79,39 @@ def test_malformed_sms_payload_returns_422(tmp_path, monkeypatch) -> None:
     )
 
     assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["error"]["code"] == "validation_error"
+    assert "field_errors" in detail["error"]
+
+
+def test_sms_from_number_must_be_e164(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        webhooks.settings,
+        "sms_suppression_path",
+        _suppression_path(tmp_path),
+    )
+
+    response = client.post(
+        "/webhooks/sms",
+        data={"from": "251911000000", "to": "12345", "text": "hi", "id": "7"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["error"]["code"] == "validation_error"
+
+
+def test_sms_json_body_returns_415(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        webhooks.settings,
+        "sms_suppression_path",
+        _suppression_path(tmp_path),
+    )
+
+    response = client.post(
+        "/webhooks/sms",
+        json={"from": "+251911000000", "text": "hi"},
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"]["error"]["code"] == "unsupported_media_type"
