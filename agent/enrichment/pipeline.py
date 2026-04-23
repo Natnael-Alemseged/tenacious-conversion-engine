@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.core.config import settings
 from agent.enrichment import ai_maturity, crunchbase, job_posts, layoffs
+from agent.enrichment.bench_summary import extract_keywords, load
 
 
 def run(company_name: str, careers_url: str = "") -> dict:
@@ -75,6 +77,16 @@ def run(company_name: str, careers_url: str = "") -> dict:
         3,
     )
 
+    bench = load(settings.bench_summary_path)
+    bench_keywords = extract_keywords(bench)
+    role_titles = jobs.get("role_titles") or []
+    haystack = " ".join(
+        [company_name, " ".join((cb or {}).get("categories", [])), " ".join(role_titles)]
+    )
+    haystack_lc = haystack.lower()
+    bench_hits = sorted([kw for kw in bench_keywords if kw and kw in haystack_lc])
+    bench_gate_passed = bool(bench_hits)
+
     return {
         "company_name": company_name,
         "icp_segment": icp_segment,
@@ -109,6 +121,14 @@ def run(company_name: str, careers_url: str = "") -> dict:
                 "score": ai_score,
                 "justification": ai_justification,
                 "confidence": ai_confidence,
+            },
+            "bench": {
+                "data": {
+                    "keywords": sorted(list(bench_keywords)),
+                    "hits": bench_hits,
+                    "bench_to_brief_gate_passed": bench_gate_passed,
+                },
+                "confidence": 1.0 if bench else 0.0,
             },
         },
     }
