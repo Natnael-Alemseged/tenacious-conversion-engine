@@ -271,7 +271,20 @@ class LeadOrchestrator:
                 result = self.sms.send_sms(to_phone=routed_to, message=message)
                 if span:
                     span.update(output=result)
-                return result
+            self.hubspot.upsert_contact(
+                identifier=to_phone,
+                source="outbound_sms",
+                properties={
+                    "lead_source": "outbound_sms",
+                    "last_outbound_sms_at": _now_iso(),
+                    "enrichment_timestamp": _now_iso(),
+                    "last_outbound_mode": outbound_audit["outbound_mode"],
+                    "last_outbound_draft": str(outbound_audit["draft"]).lower(),
+                    "last_outbound_intended_to": str(outbound_audit["intended_to"])[:255],
+                    "last_outbound_routed_to": str(outbound_audit["routed_to"])[:255],
+                },
+            )
+            return result
 
     def book_discovery_call(
         self,
