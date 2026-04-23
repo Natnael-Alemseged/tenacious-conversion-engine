@@ -83,7 +83,11 @@ def test_handle_email_records_trace_and_span() -> None:
     ) in langfuse.events
 
 
-def test_send_follow_up_sms_records_trace_and_returns_sms_response() -> None:
+def test_send_follow_up_sms_records_trace_and_returns_sms_response(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
     langfuse = FakeLangfuseClient()
     orchestrator = LeadOrchestrator(
         hubspot=FakeHubSpotClient(),
@@ -179,7 +183,13 @@ def test_inbound_reply_handlers_can_be_registered() -> None:
     ]
 
 
-def _make_orchestrator() -> tuple[LeadOrchestrator, FakeLangfuseClient, FakeHubSpotClient]:
+def _make_orchestrator(
+    monkeypatch,
+) -> tuple[LeadOrchestrator, FakeLangfuseClient, FakeHubSpotClient]:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
     langfuse = FakeLangfuseClient()
     hubspot = FakeHubSpotClient()
     orch = LeadOrchestrator(
@@ -192,8 +202,8 @@ def _make_orchestrator() -> tuple[LeadOrchestrator, FakeLangfuseClient, FakeHubS
     return orch, langfuse, hubspot
 
 
-def test_send_outbound_email_segment1_direct_phrasing() -> None:
-    orch, _, _ = _make_orchestrator()
+def test_send_outbound_email_segment1_direct_phrasing(monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
     result = orch.send_outbound_email(
         to_email="lead@acme.com",
         company_name="Acme",
@@ -207,8 +217,8 @@ def test_send_outbound_email_segment1_direct_phrasing() -> None:
     assert "Series B announced last month." in result["html"]
 
 
-def test_send_outbound_email_segment2_hedged_phrasing() -> None:
-    orch, _, _ = _make_orchestrator()
+def test_send_outbound_email_segment2_hedged_phrasing(monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
     result = orch.send_outbound_email(
         to_email="lead@corp.com",
         company_name="Corp",
@@ -220,8 +230,8 @@ def test_send_outbound_email_segment2_hedged_phrasing() -> None:
     assert "Based on the signals we've seen" in result["html"]
 
 
-def test_send_outbound_email_exploratory_phrasing_low_confidence() -> None:
-    orch, _, _ = _make_orchestrator()
+def test_send_outbound_email_exploratory_phrasing_low_confidence(monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
     result = orch.send_outbound_email(
         to_email="lead@startup.io",
         company_name="Startup",
@@ -233,8 +243,8 @@ def test_send_outbound_email_exploratory_phrasing_low_confidence() -> None:
     assert "early indicators" in result["html"]
 
 
-def test_send_outbound_email_none_segment_falls_back_to_general() -> None:
-    orch, _, _ = _make_orchestrator()
+def test_send_outbound_email_none_segment_falls_back_to_general(monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
     result = orch.send_outbound_email(
         to_email="lead@co.com",
         company_name="Co",
