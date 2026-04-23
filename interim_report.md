@@ -130,14 +130,14 @@ All five required components are documented below with the specific capability t
 **Tool:** Resend HTTP API (`https://api.resend.com`)  
 **Capability verified:** `POST /emails` returns `{id: <uuid>}`; inbound delivery webhooks for `email.bounced` and `email.complained` are parsed into typed `InboundEmailEvent` payloads and routed to `handle_email_bounce()`.  
 **Configuration:** `RESEND_API_KEY` + `RESEND_FROM_EMAIL` in `.env`; `from` address passed in every outbound payload.  
-**Evidence:** `tests/test_resend_email.py` — `test_send_email_success` fires a MockTransport POST to `/emails` and asserts `{"id": "abc123"}` is returned; `test_send_email_http_error` verifies `ResendSendError` is raised with the correct `status_code`; `tests/test_email_webhook.py` — `test_bounce_event_routes_to_handle_bounce` confirms bounce routing end-to-end.
+**Evidence:** `tests/test_resend_email.py` verifies outbound Resend sends and typed error handling; `tests/test_workflow_tracing.py` verifies bounce handling and downstream callback routing end-to-end.
 
 ### 3.2 SMS — Africa's Talking
 
 **Tool:** Africa's Talking Messaging API (`https://api.africastalking.com/version1/messaging`)  
 **Capability verified:** `POST /version1/messaging` (form-encoded) sends outbound SMS; inbound SMS form POST is parsed from `from` / `text` / `to` / `date` / `id` fields; STOP / START / HELP keyword compliance enforced; suppression file persists opt-out state across restarts.  
 **Configuration:** `AFRICASTALKING_USERNAME=sandbox`, `AFRICASTALKING_API_KEY`, `AFRICASTALKING_SHORT_CODE`; sandbox mode activated by matching username `"sandbox"` to alternate base URL.  
-**Evidence:** `tests/test_africastalking_sms.py` — `test_send_sms_success` and `test_send_sms_http_error`; `tests/test_sms_webhook.py` — `test_stop_keyword_suppresses_number`, `test_start_keyword_unsuppresses`, `test_suppressed_number_is_ignored`.
+**Evidence:** `tests/test_africastalking_sms.py` verifies outbound sends and typed provider failures; `tests/test_sms_controls.py` verifies `STOP`, `START`, `HELP`, suppression persistence, and malformed payload rejection.
 
 ### 3.3 CRM — HubSpot
 
@@ -347,11 +347,11 @@ xychart-beta
 tests/
 ├── test_africastalking_sms.py    # send_sms + AfricasTalkingSendError
 ├── test_calcom.py                # booking + slot listing
-├── test_email_webhook.py         # inbound reply + bounce routing
+├── test_workflow_tracing.py      # routing spans, bounce handling, outbound guardrails
 ├── test_hubspot.py               # upsert by email + by phone
 ├── test_resend_email.py          # send_email + ResendSendError
 ├── test_sms_suppression.py       # suppress / unsuppress / is_suppressed
-├── test_sms_webhook.py           # STOP / START / HELP / suppression gate
+├── test_sms_controls.py          # STOP / START / HELP / suppression gate
 └── test_workflow_tracing.py      # send_warm_lead_sms + send_outbound_email traces
 ```
 

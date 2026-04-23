@@ -49,6 +49,14 @@ def _outbound_route(*, intended_to: str, channel: str) -> tuple[str, dict[str, A
     }
 
 
+def _require_bench_gate(*, bench_to_brief_gate_passed: bool, operation: str) -> None:
+    if not bench_to_brief_gate_passed:
+        raise ValueError(
+            f"Bench-to-brief gate failed for {operation}. "
+            "Do not commit Tenacious capacity until the bench summary shows a matching capability."
+        )
+
+
 class LeadOrchestrator:
     def __init__(
         self,
@@ -163,6 +171,7 @@ class LeadOrchestrator:
         ai_maturity_score: int | None = None,
         confidence: float | None = None,
         crunchbase_id: str | None = None,
+        bench_to_brief_gate_passed: bool = True,
     ) -> dict[str, Any]:
         _subjects: dict[int, str] = {
             0: f"{company_name}: quick thought",
@@ -182,6 +191,10 @@ class LeadOrchestrator:
         subject = _subjects[seg]
         opener = _openers[seg]
 
+        _require_bench_gate(
+            bench_to_brief_gate_passed=bench_to_brief_gate_passed,
+            operation="outbound_email",
+        )
         routed_to, outbound_audit = _outbound_route(intended_to=to_email, channel="email")
 
         phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
@@ -312,7 +325,12 @@ class LeadOrchestrator:
         icp_segment: int | None = None,
         enrichment_summary: str | None = None,
         metadata: dict[str, Any] | None = None,
+        bench_to_brief_gate_passed: bool = True,
     ) -> dict[str, Any]:
+        _require_bench_gate(
+            bench_to_brief_gate_passed=bench_to_brief_gate_passed,
+            operation="booking",
+        )
         payload: dict[str, Any] = {
             "attendee_name": attendee_name,
             "attendee_email": attendee_email,

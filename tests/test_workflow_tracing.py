@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
+import pytest
+
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.workflows.lead_orchestrator import LeadOrchestrator
 
@@ -305,6 +307,37 @@ def test_outbound_sms_routes_to_sink_when_disabled(monkeypatch) -> None:
         prior_email_replied=True,
     )
     assert result["to_phone"] == "+15555550123"
+
+
+def test_outbound_email_requires_bench_gate(monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
+
+    with pytest.raises(ValueError, match="Bench-to-brief gate failed"):
+        orch.send_outbound_email(
+            to_email="lead@co.com",
+            company_name="Co",
+            signal_summary="Signal here.",
+            icp_segment=1,
+            bench_to_brief_gate_passed=False,
+        )
+
+
+def test_booking_requires_bench_gate() -> None:
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    with pytest.raises(ValueError, match="Bench-to-brief gate failed"):
+        orchestrator.book_discovery_call(
+            attendee_name="Jane Doe",
+            attendee_email="jane@example.com",
+            start="2026-04-25T09:00:00Z",
+            bench_to_brief_gate_passed=False,
+        )
 
 
 def test_bounce_handler_can_be_registered() -> None:
