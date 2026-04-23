@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from agent.core.config import settings
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
@@ -10,6 +10,8 @@ orchestrator = LeadOrchestrator()
 STOP_KEYWORDS = {"STOP", "UNSUB", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}
 HELP_KEYWORDS = {"HELP"}
 
+BOUNCE_EVENT_TYPES = {"email.bounced", "email.complained", "email.delivery_delayed"}
+
 
 def _suppression_store() -> SmsSuppressionStore:
     return SmsSuppressionStore(settings.sms_suppression_path)
@@ -17,7 +19,14 @@ def _suppression_store() -> SmsSuppressionStore:
 
 @router.post("/email")
 def inbound_email(event: InboundEmailEvent) -> dict[str, str]:
-    orchestrator.handle_email(event)
+    if event.event_type in BOUNCE_EVENT_TYPES:
+        orchestrator.handle_email_bounce(event)
+        return {"status": "bounce_recorded", "event_type": event.event_type}
+
+    try:
+        orchestrator.handle_email(event)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"status": "accepted"}
 
 
