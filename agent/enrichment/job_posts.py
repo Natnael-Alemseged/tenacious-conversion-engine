@@ -67,10 +67,26 @@ def _scrape_with_playwright(careers_url: str) -> dict:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     open_roles = sum(1 for ln in lines if ENG_ROLE_PATTERNS.search(ln))
     ai_adjacent = sum(1 for ln in lines if AI_ROLE_PATTERNS.search(ln))
+    role_titles: list[str] = []
+    seen: set[str] = set()
+    for ln in lines:
+        if not ENG_ROLE_PATTERNS.search(ln):
+            continue
+        title = re.sub(r"\s+", " ", ln).strip()
+        if len(title) > 80:
+            continue
+        key = title.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        role_titles.append(title)
+        if len(role_titles) >= 25:
+            break
 
     return {
         "url": careers_url,
         "open_roles": open_roles,
         "ai_adjacent_roles": ai_adjacent,
         "ai_roles_fraction": round(ai_adjacent / open_roles, 3) if open_roles else 0.0,
+        "role_titles": role_titles,
     }
