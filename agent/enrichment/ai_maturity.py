@@ -63,7 +63,6 @@ def score(signals: dict) -> tuple[int, str, float]:
         if val is True:
             weighted_score += _WEIGHTS[key]
             notes.append(key.replace("_", " "))
-        if val is not None:
             signals_present += 1
 
     confidence = signals_present / len(_WEIGHTS)
