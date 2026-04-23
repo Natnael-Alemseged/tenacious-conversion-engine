@@ -4,6 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from agent.core.config import settings
 from agent.enrichment.ai_maturity import confidence_phrasing
 from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
 from agent.integrations.calcom import CalComClient
@@ -19,6 +20,33 @@ DownstreamEventHandler = (
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _outbound_route(*, intended_to: str, channel: str) -> tuple[str, dict[str, Any]]:
+    if settings.outbound_enabled:
+        return intended_to, {
+            "outbound_mode": "live",
+            "draft": True,
+            "intended_to": intended_to,
+            "routed_to": intended_to,
+            "reason": "outbound_enabled",
+            "channel": channel,
+        }
+
+    sink = settings.outbound_sink_email if channel == "email" else settings.outbound_sink_phone
+    if not sink:
+        raise ValueError(
+            f"Outbound is disabled and no sink is configured for channel={channel}. "
+            f"Set OUTBOUND_SINK_{'EMAIL' if channel == 'email' else 'PHONE'}."
+        )
+    return sink, {
+        "outbound_mode": "sink",
+        "draft": True,
+        "intended_to": intended_to,
+        "routed_to": sink,
+        "reason": "outbound_disabled",
+        "channel": channel,
+    }
 
 
 class LeadOrchestrator:
@@ -153,6 +181,8 @@ class LeadOrchestrator:
         subject = _subjects[seg]
         opener = _openers[seg]
 
+        routed_to, outbound_audit = _outbound_route(intended_to=to_email, channel="email")
+
         phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
         if phrasing == "direct":
             signal_line = signal_summary
@@ -175,6 +205,10 @@ class LeadOrchestrator:
             "lead_source": "outbound_email",
             "last_outbound_email_at": _now_iso(),
             "enrichment_timestamp": _now_iso(),
+            "last_outbound_mode": outbound_audit["outbound_mode"],
+            "last_outbound_draft": str(outbound_audit["draft"]).lower(),
+            "last_outbound_intended_to": str(outbound_audit["intended_to"])[:255],
+            "last_outbound_routed_to": str(outbound_audit["routed_to"])[:255],
         }
         if icp_segment is not None:
             enrichment_props["icp_segment"] = str(icp_segment)
@@ -185,8 +219,15 @@ class LeadOrchestrator:
             "send_outbound_email",
             {"to_email": to_email, "company_name": company_name},
         ):
-            with self.langfuse.span("resend.send_email", input={"to_email": to_email}) as span:
-                result = self.resend.send_email(to_email=to_email, subject=subject, html=html)
+            with self.langfuse.span(
+                "resend.send_email",
+                input={"to_email": routed_to, "outbound_audit": outbound_audit},
+            ) as span:
+                result = self.resend.send_email(
+                    to_email=routed_to,
+                    subject=subject,
+                    html=html,
+                )
                 if span:
                     span.update(output=result)
             self.hubspot.upsert_contact(
@@ -210,6 +251,7 @@ class LeadOrchestrator:
                 "SMS is reserved for warm leads who have replied by email. "
                 "Use send_outbound_email for first contact."
             )
+        routed_to, outbound_audit = _outbound_route(intended_to=to_phone, channel="sms")
         message = (
             f"{company_name}: following up on your email reply. "
             f"{scheduling_hint} Reply to confirm a time."
@@ -220,9 +262,9 @@ class LeadOrchestrator:
         ):
             with self.langfuse.span(
                 "africastalking.send_sms",
-                input={"to_phone": to_phone, "message": message},
+                input={"to_phone": routed_to, "message": message, "outbound_audit": outbound_audit},
             ) as span:
-                result = self.sms.send_sms(to_phone=to_phone, message=message)
+                result = self.sms.send_sms(to_phone=routed_to, message=message)
                 if span:
                     span.update(output=result)
                 return result
