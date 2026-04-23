@@ -1,4 +1,4 @@
-# Conversion Engine
+# Conversion Engine — **Outbound is sink-routed by default** (enable explicitly before live use)
 
 FastAPI backend scaffold for the Tenacious sales-automation conversion engine challenge.
 
