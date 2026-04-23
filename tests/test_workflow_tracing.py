@@ -56,6 +56,11 @@ class FakeCalComClient:
         return {"status": "success", "data": {"uid": "booking_uid_123"}, **kwargs}
 
 
+class NoUidCalComClient:
+    def create_booking(self, **kwargs) -> dict:
+        return {"status": "success", "data": {}, **kwargs}
+
+
 def test_handle_email_records_trace_and_span() -> None:
     langfuse = FakeLangfuseClient()
     orchestrator = LeadOrchestrator(
@@ -111,6 +116,33 @@ def test_send_follow_up_sms_records_trace_and_returns_sms_response(monkeypatch) 
     assert result["to_phone"] == "+251911000000"
     assert ("trace.end", {"name": "send_warm_lead_sms"}) in langfuse.events
     assert any(event[0] == "span.update" for event in langfuse.events)
+
+
+def test_send_follow_up_sms_logs_success(caplog, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="agent.workflows.lead_orchestrator"):
+        orchestrator.send_warm_lead_sms(
+            to_phone="+251911000000",
+            company_name="Acme",
+            scheduling_hint="We found a relevant hiring signal.",
+            prior_email_replied=True,
+        )
+
+    records = [r for r in caplog.records if r.getMessage() == "send_warm_lead_sms"]
+    assert records
+    assert records[-1].wf_outcome == "success"
+    assert records[-1].wf_channel == "sms"
 
 
 def test_book_discovery_call_retries_transient_hubspot_then_succeeds(monkeypatch) -> None:
@@ -185,6 +217,31 @@ def test_book_discovery_call_records_trace_and_returns_booking() -> None:
             "output": None,
         },
     ) in langfuse.events
+
+
+def test_book_discovery_call_logs_missing_booking_uid(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=NoUidCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="agent.workflows.lead_orchestrator"):
+        with pytest.raises(ValueError, match="missing a booking uid"):
+            orchestrator.book_discovery_call(
+                attendee_name="Jane Doe",
+                attendee_email="jane@example.com",
+                start="2026-04-25T09:00:00Z",
+            )
+
+    records = [r for r in caplog.records if r.getMessage() == "book_discovery_call"]
+    assert records
+    assert records[-1].wf_phase == "booking_response"
+    assert records[-1].wf_outcome == "failure"
 
 
 def test_inbound_reply_handlers_can_be_registered() -> None:

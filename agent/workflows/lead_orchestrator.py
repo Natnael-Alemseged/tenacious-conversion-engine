@@ -66,6 +66,33 @@ def _outbound_email_log_extra(
     }
 
 
+def _workflow_log_extra(
+    *,
+    workflow: str,
+    outcome: str,
+    phase: str,
+    identifier: str = "",
+    channel: str = "",
+    error_type: str = "",
+    error_kind: str = "",
+    attempt_count: int | None = None,
+) -> dict[str, object]:
+    identifier_kind = "email" if "@" in identifier else ("phone" if identifier else "")
+    return {
+        "wf_component": "lead_orchestrator",
+        "wf_metric": f"{workflow}.{phase}",
+        "wf_workflow": workflow,
+        "wf_outcome": outcome,
+        "wf_phase": phase,
+        "wf_channel": channel,
+        "wf_identifier_kind": identifier_kind,
+        "wf_identifier_suffix": identifier[-6:] if identifier else "",
+        "wf_error_type": error_type,
+        "wf_error_kind": error_kind,
+        "wf_attempt_count": "" if attempt_count is None else str(attempt_count),
+    }
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -149,6 +176,31 @@ class LeadOrchestrator:
         if self.bounce_handler is not None:
             self.bounce_handler("email_bounce", result, event)
 
+    def _log_workflow_failure(
+        self,
+        *,
+        workflow: str,
+        phase: str,
+        identifier: str,
+        channel: str = "",
+        exc: Exception,
+        attempt_count: int | None = None,
+    ) -> None:
+        _log.error(
+            workflow,
+            extra=_workflow_log_extra(
+                workflow=workflow,
+                outcome="failure",
+                phase=phase,
+                identifier=identifier,
+                channel=channel,
+                error_type=type(exc).__name__,
+                error_kind=getattr(exc, "error_kind", ""),
+                attempt_count=attempt_count,
+            ),
+            exc_info=exc,
+        )
+
     def handle_email(self, event: InboundEmailEvent) -> dict[str, Any]:
         enrichment_props = {
             "lead_source": "inbound_email_reply",
@@ -162,14 +214,42 @@ class LeadOrchestrator:
                 "hubspot.upsert_contact",
                 input={"identifier": event.from_email, "source": "email"},
             ) as span:
-                result = self.hubspot.upsert_contact(
-                    identifier=event.from_email,
-                    source="email",
-                    properties=enrichment_props,
-                )
+                try:
+                    result = self.hubspot.upsert_contact(
+                        identifier=event.from_email,
+                        source="email",
+                        properties=enrichment_props,
+                    )
+                except Exception as exc:
+                    if span:
+                        span.update(
+                            output={
+                                "ok": False,
+                                "error_type": type(exc).__name__,
+                                "message_excerpt": str(exc)[:500],
+                            }
+                        )
+                    self._log_workflow_failure(
+                        workflow="handle_email",
+                        phase="hubspot",
+                        identifier=event.from_email,
+                        channel="email",
+                        exc=exc,
+                    )
+                    raise
                 if span:
                     span.update(output=result)
                 self._emit_reply_handler(channel="email", result=result, event=event)
+                _log.info(
+                    "handle_email",
+                    extra=_workflow_log_extra(
+                        workflow="handle_email",
+                        outcome="success",
+                        phase="complete",
+                        identifier=event.from_email,
+                        channel="email",
+                    ),
+                )
                 return result
 
     def handle_email_bounce(self, event: InboundEmailEvent) -> dict[str, Any]:
@@ -179,12 +259,32 @@ class LeadOrchestrator:
             "enrichment_timestamp": _now_iso(),
         }
         with self.langfuse.trace_workflow("handle_email_bounce", event.model_dump(mode="json")):
-            result = self.hubspot.upsert_contact(
-                identifier=event.from_email,
-                source="email_bounce",
-                properties=props,
-            )
+            try:
+                result = self.hubspot.upsert_contact(
+                    identifier=event.from_email,
+                    source="email_bounce",
+                    properties=props,
+                )
+            except Exception as exc:
+                self._log_workflow_failure(
+                    workflow="handle_email_bounce",
+                    phase="hubspot",
+                    identifier=event.from_email,
+                    channel="email",
+                    exc=exc,
+                )
+                raise
             self._emit_bounce_handler(result=result, event=event)
+            _log.info(
+                "handle_email_bounce",
+                extra=_workflow_log_extra(
+                    workflow="handle_email_bounce",
+                    outcome="success",
+                    phase="complete",
+                    identifier=event.from_email,
+                    channel="email",
+                ),
+            )
             return result
 
     def handle_sms(self, event: InboundSmsEvent) -> dict[str, Any]:
@@ -199,14 +299,42 @@ class LeadOrchestrator:
                 "hubspot.upsert_contact",
                 input={"identifier": event.from_number, "source": "sms"},
             ) as span:
-                result = self.hubspot.upsert_contact(
-                    identifier=event.from_number,
-                    source="sms",
-                    properties=enrichment_props,
-                )
+                try:
+                    result = self.hubspot.upsert_contact(
+                        identifier=event.from_number,
+                        source="sms",
+                        properties=enrichment_props,
+                    )
+                except Exception as exc:
+                    if span:
+                        span.update(
+                            output={
+                                "ok": False,
+                                "error_type": type(exc).__name__,
+                                "message_excerpt": str(exc)[:500],
+                            }
+                        )
+                    self._log_workflow_failure(
+                        workflow="handle_sms",
+                        phase="hubspot",
+                        identifier=event.from_number,
+                        channel="sms",
+                        exc=exc,
+                    )
+                    raise
                 if span:
                     span.update(output=result)
                 self._emit_reply_handler(channel="sms", result=result, event=event)
+                _log.info(
+                    "handle_sms",
+                    extra=_workflow_log_extra(
+                        workflow="handle_sms",
+                        outcome="success",
+                        phase="complete",
+                        identifier=event.from_number,
+                        channel="sms",
+                    ),
+                )
                 return result
 
     def send_outbound_email(
@@ -440,7 +568,17 @@ class LeadOrchestrator:
                 "SMS is reserved for warm leads who have replied by email. "
                 "Use send_outbound_email for first contact."
             )
-        routed_to, outbound_audit = _outbound_route(intended_to=to_phone, channel="sms")
+        try:
+            routed_to, outbound_audit = _outbound_route(intended_to=to_phone, channel="sms")
+        except ValueError as exc:
+            self._log_workflow_failure(
+                workflow="send_warm_lead_sms",
+                phase="routing",
+                identifier=to_phone,
+                channel="sms",
+                exc=exc,
+            )
+            raise
         message = (
             f"{company_name}: following up on your email reply. "
             f"{scheduling_hint} Reply to confirm a time."
@@ -458,22 +596,61 @@ class LeadOrchestrator:
                     "crunchbase_id": crunchbase_id,
                 },
             ) as span:
-                result = self.sms.send_sms(to_phone=routed_to, message=message)
+                try:
+                    result = self.sms.send_sms(to_phone=routed_to, message=message)
+                except Exception as exc:
+                    if span:
+                        span.update(
+                            output={
+                                "ok": False,
+                                "error_type": type(exc).__name__,
+                                "error_kind": getattr(exc, "error_kind", ""),
+                                "message_excerpt": str(exc)[:500],
+                            }
+                        )
+                    self._log_workflow_failure(
+                        workflow="send_warm_lead_sms",
+                        phase="provider",
+                        identifier=to_phone,
+                        channel="sms",
+                        exc=exc,
+                    )
+                    raise
                 if span:
                     span.update(output=result)
-            self.hubspot.upsert_contact(
-                identifier=to_phone,
-                source="outbound_sms",
-                properties={
-                    "lead_source": "outbound_sms",
-                    "last_outbound_sms_at": _now_iso(),
-                    "enrichment_timestamp": _now_iso(),
-                    "last_outbound_mode": outbound_audit["outbound_mode"],
-                    "last_outbound_draft": str(outbound_audit["draft"]).lower(),
-                    "last_outbound_intended_to": str(outbound_audit["intended_to"])[:255],
-                    "last_outbound_routed_to": str(outbound_audit["routed_to"])[:255],
-                    "crunchbase_id": crunchbase_id or "",
-                },
+            try:
+                self.hubspot.upsert_contact(
+                    identifier=to_phone,
+                    source="outbound_sms",
+                    properties={
+                        "lead_source": "outbound_sms",
+                        "last_outbound_sms_at": _now_iso(),
+                        "enrichment_timestamp": _now_iso(),
+                        "last_outbound_mode": outbound_audit["outbound_mode"],
+                        "last_outbound_draft": str(outbound_audit["draft"]).lower(),
+                        "last_outbound_intended_to": str(outbound_audit["intended_to"])[:255],
+                        "last_outbound_routed_to": str(outbound_audit["routed_to"])[:255],
+                        "crunchbase_id": crunchbase_id or "",
+                    },
+                )
+            except Exception as exc:
+                self._log_workflow_failure(
+                    workflow="send_warm_lead_sms",
+                    phase="hubspot",
+                    identifier=to_phone,
+                    channel="sms",
+                    exc=exc,
+                )
+                raise
+            _log.info(
+                "send_warm_lead_sms",
+                extra=_workflow_log_extra(
+                    workflow="send_warm_lead_sms",
+                    outcome="success",
+                    phase="complete",
+                    identifier=to_phone,
+                    channel="sms",
+                ),
             )
             return result
 
@@ -515,13 +692,23 @@ class LeadOrchestrator:
                 )
                 if span:
                     span.update(output=booking)
-
-            # Write booking confirmation back to HubSpot so the two integrations are linked.
             booking_data = booking.get("data", booking)
+            booking_uid = str(booking_data.get("uid", "")).strip()
+            if not booking_uid:
+                exc = ValueError("Cal.com booking response is missing a booking uid.")
+                self._log_workflow_failure(
+                    workflow="book_discovery_call",
+                    phase="booking_response",
+                    identifier=attendee_email,
+                    channel="booking",
+                    exc=exc,
+                )
+                raise exc
+
             hs_props: dict[str, Any] = {
                 "discovery_call_booked": "true",
                 "discovery_call_start": start,
-                "discovery_call_booking_uid": str(booking_data.get("uid", "")),
+                "discovery_call_booking_uid": booking_uid,
                 "discovery_call_booked_at": _now_iso(),
                 "enrichment_timestamp": _now_iso(),
             }
@@ -534,20 +721,50 @@ class LeadOrchestrator:
                 "hubspot.upsert_contact_post_booking",
                 input={"identifier": attendee_email},
             ) as span:
-                outcome = upsert_contact_with_booking_retries(
-                    lambda: self.hubspot.upsert_contact(
+                try:
+                    outcome = upsert_contact_with_booking_retries(
+                        lambda: self.hubspot.upsert_contact(
+                            identifier=attendee_email,
+                            source="calcom_booking",
+                            properties=hs_props,
+                        ),
+                        booking=booking,
+                        contact_identifier=attendee_email,
+                    )
+                except Exception as exc:
+                    if span:
+                        span.update(
+                            output={
+                                "ok": False,
+                                "error_type": type(exc).__name__,
+                                "message_excerpt": str(exc)[:500],
+                            }
+                        )
+                    self._log_workflow_failure(
+                        workflow="book_discovery_call",
+                        phase="hubspot_writeback",
                         identifier=attendee_email,
-                        source="calcom_booking",
-                        properties=hs_props,
-                    ),
-                    booking=booking,
-                    contact_identifier=attendee_email,
-                )
+                        channel="booking",
+                        exc=exc,
+                        attempt_count=getattr(exc, "attempts", None),
+                    )
+                    raise
                 hs_payload = {
                     **outcome.hubspot_result,
                     "crm_writeback_attempts": outcome.attempts,
                 }
                 if span:
                     span.update(output=hs_payload)
+            _log.info(
+                "book_discovery_call",
+                extra=_workflow_log_extra(
+                    workflow="book_discovery_call",
+                    outcome="success",
+                    phase="complete",
+                    identifier=attendee_email,
+                    channel="booking",
+                    attempt_count=outcome.attempts,
+                ),
+            )
 
             return booking

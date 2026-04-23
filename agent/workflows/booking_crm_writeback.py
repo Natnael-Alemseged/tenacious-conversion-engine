@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import errno
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 class BookingCrmWritebackError(Exception):
@@ -76,6 +79,19 @@ def upsert_contact_with_booking_retries(
             failures.append(exc)
             is_last = attempt >= max_attempts
             transient = _is_transient_crm_writeback_failure(exc)
+            _log.warning(
+                "booking_crm_writeback_attempt",
+                extra={
+                    "bcw_metric": "booking.crm_writeback",
+                    "bcw_outcome": "retry" if transient and not is_last else "failure",
+                    "bcw_attempt": str(attempt),
+                    "bcw_max_attempts": str(max_attempts),
+                    "bcw_transient": "true" if transient else "false",
+                    "bcw_error_type": type(exc).__name__,
+                    "bcw_contact_identifier": contact_identifier[:255],
+                },
+                exc_info=exc,
+            )
             if is_last or not transient:
                 raise BookingCrmWritebackError(
                     booking=booking,

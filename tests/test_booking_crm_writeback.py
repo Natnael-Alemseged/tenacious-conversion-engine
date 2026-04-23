@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import logging
 
 import pytest
 
@@ -96,3 +97,29 @@ def test_writeback_retries_on_errno_epipe(monkeypatch) -> None:
 
     assert outcome.attempts == 2
     assert outcome.hubspot_result == {"ok": True}
+
+
+def test_writeback_logs_retry_attempt(caplog, monkeypatch) -> None:
+    monkeypatch.setattr("agent.workflows.booking_crm_writeback.time.sleep", lambda _s: None)
+    calls = {"n": 0}
+
+    def upsert() -> dict:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("slow")
+        return {"ok": True}
+
+    with caplog.at_level(logging.WARNING, logger="agent.workflows.booking_crm_writeback"):
+        outcome = upsert_contact_with_booking_retries(
+            upsert,
+            booking={"data": {"uid": "u5"}},
+            contact_identifier="trace@example.com",
+            max_attempts=3,
+        )
+
+    assert outcome.attempts == 2
+    records = [r for r in caplog.records if r.getMessage() == "booking_crm_writeback_attempt"]
+    assert records
+    assert records[-1].bcw_outcome == "retry"
+    assert records[-1].bcw_attempt == "1"
+    assert records[-1].bcw_transient == "true"
