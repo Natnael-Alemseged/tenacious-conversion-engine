@@ -93,14 +93,15 @@ def test_send_follow_up_sms_records_trace_and_returns_sms_response() -> None:
         sms=FakeSmsClient(),
     )
 
-    result = orchestrator.send_follow_up_sms(
+    result = orchestrator.send_warm_lead_sms(
         to_phone="+251911000000",
         company_name="Acme",
         scheduling_hint="We found a relevant hiring signal.",
+        prior_email_replied=True,
     )
 
     assert result["to_phone"] == "+251911000000"
-    assert ("trace.end", {"name": "send_follow_up_sms"}) in langfuse.events
+    assert ("trace.end", {"name": "send_warm_lead_sms"}) in langfuse.events
     assert any(event[0] == "span.update" for event in langfuse.events)
 
 
