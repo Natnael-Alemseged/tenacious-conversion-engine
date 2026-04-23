@@ -162,6 +162,7 @@ class LeadOrchestrator:
         icp_segment: int | None = None,
         ai_maturity_score: int | None = None,
         confidence: float | None = None,
+        crunchbase_id: str | None = None,
     ) -> dict[str, Any]:
         _subjects: dict[int, str] = {
             0: f"{company_name}: quick thought",
@@ -210,6 +211,8 @@ class LeadOrchestrator:
             "last_outbound_intended_to": str(outbound_audit["intended_to"])[:255],
             "last_outbound_routed_to": str(outbound_audit["routed_to"])[:255],
         }
+        if crunchbase_id:
+            enrichment_props["crunchbase_id"] = crunchbase_id
         if icp_segment is not None:
             enrichment_props["icp_segment"] = str(icp_segment)
         if ai_maturity_score is not None:
@@ -221,7 +224,11 @@ class LeadOrchestrator:
         ):
             with self.langfuse.span(
                 "resend.send_email",
-                input={"to_email": routed_to, "outbound_audit": outbound_audit},
+                input={
+                    "to_email": routed_to,
+                    "outbound_audit": outbound_audit,
+                    "crunchbase_id": crunchbase_id,
+                },
             ) as span:
                 result = self.resend.send_email(
                     to_email=routed_to,
@@ -248,6 +255,7 @@ class LeadOrchestrator:
         company_name: str,
         scheduling_hint: str,
         prior_email_replied: bool,
+        crunchbase_id: str | None = None,
     ) -> dict[str, Any]:
         """Send an SMS scheduling nudge. Only valid for warm leads who replied by email."""
         if not prior_email_replied:
@@ -266,7 +274,12 @@ class LeadOrchestrator:
         ):
             with self.langfuse.span(
                 "africastalking.send_sms",
-                input={"to_phone": routed_to, "message": message, "outbound_audit": outbound_audit},
+                input={
+                    "to_phone": routed_to,
+                    "message": message,
+                    "outbound_audit": outbound_audit,
+                    "crunchbase_id": crunchbase_id,
+                },
             ) as span:
                 result = self.sms.send_sms(to_phone=routed_to, message=message)
                 if span:
@@ -282,6 +295,7 @@ class LeadOrchestrator:
                     "last_outbound_draft": str(outbound_audit["draft"]).lower(),
                     "last_outbound_intended_to": str(outbound_audit["intended_to"])[:255],
                     "last_outbound_routed_to": str(outbound_audit["routed_to"])[:255],
+                    "crunchbase_id": crunchbase_id or "",
                 },
             )
             return result
