@@ -15,7 +15,7 @@ As of this interim submission:
 
 - **Core workflow implemented:** inbound email/SMS webhooks, CRM upserts, booking integration, and a first-pass enrichment pipeline are wired end-to-end.
 - **τ²-Bench baseline established:** mean pass@1 = **0.278** (95% CI [0.157, 0.399]) across 3 valid trials on the retail `train` split using Qwen3-Next-80B-A3B.
-- **18 unit tests passing** using `httpx.MockTransport` (no live credentials required).
+- **Core tests passing** using `httpx.MockTransport` and FastAPI `TestClient` (no live credentials required).
 - Acts III–V (adversarial probe library, ablation study, held-out evaluation) are planned for completion by 2026-04-25.
 
 ---
@@ -144,6 +144,7 @@ All five required components are documented below with the specific capability t
 **Tool:** HubSpot CRM v3 API (`https://api.hubapi.com`)  
 **Capability verified:** (1) `POST /crm/v3/objects/contacts/batch/upsert` creates or updates a contact by email, writing `lead_source` plus 5 enrichment properties (`email_replied`, `last_email_reply_at`, `enrichment_timestamp`, `icp_segment`, `enrichment_summary`). (2) `POST /crm/v3/objects/contacts/search` + `PATCH /crm/v3/objects/contacts/{id}` locates a contact by phone before patching. (3) Booking UID written back via PATCH after Cal.com confirmation.  
 **Configuration:** `HUBSPOT_API_KEY` (Bearer token); `HUBSPOT_BASE_URL` defaults to `https://api.hubapi.com`.  
+**Interim caveat:** the challenge brief specifies HubSpot MCP. This interim build currently uses direct HubSpot HTTP calls rather than MCP tooling.  
 **Evidence:** `tests/test_hubspot.py` — `test_upsert_by_email`, `test_upsert_by_phone_existing_contact`, `test_upsert_by_phone_new_contact`; `tests/test_workflow_tracing.py` — `test_send_outbound_email_records_trace_and_writes_hubspot` asserts the HubSpot PATCH call is made with enrichment props.
 
 ### 3.4 Calendar — Cal.com
@@ -355,7 +356,7 @@ tests/
 └── test_workflow_tracing.py      # send_warm_lead_sms + send_outbound_email traces
 ```
 
-All 18 tests pass. Tests use `httpx.MockTransport` — no live credentials required.
+The core integration and workflow tests pass locally. Tests use `httpx.MockTransport` and FastAPI `TestClient` — no live credentials required.
 
 ---
 
@@ -375,7 +376,9 @@ All 18 tests pass. Tests use `httpx.MockTransport` — no live credentials requi
 |---|---|
 | **Voice channel** | Not implemented. The architecture diagram shows voice as final delivery but no voice provider is wired. `send_warm_lead_sms` raises `ValueError` if called for a suppressed number; there is no fallback to a voice channel after SMS and email exhaustion. Planned: Vapi or Twilio Programmable Voice integration. |
 | **Live p50/p95 latency data** | Langfuse spans are emitted and contain timestamps, but no aggregation query has been written over the stored traces. Latency percentile reporting requires either a Langfuse dashboard query or a post-processing pass over `held_out_traces.jsonl` — neither has been built. |
-| **Competitor gap brief** | No market research conducted yet. Requires feature matrix comparison against Outreach.io, Apollo.io, and Salesloft across at minimum: enrichment depth, SMS compliance, CRM write-back, and AI scoring. No data source identified yet for this comparison. |
+| **Competitor gap brief** | `competitor_gap_brief.json` is not implemented in this interim build. It requires sector-peer comparison data and a repeatable external comparison method beyond the currently integrated local sources. |
+| **HubSpot MCP alignment** | The brief specifies HubSpot MCP for conversation events. This codebase currently uses direct HubSpot HTTP APIs and should be treated as an architectural deviation for interim review. |
+| **Bench-summary sophistication** | Bench gating now exists as a hard runtime guard, but the current implementation is a keyword-based bench-to-brief match rather than a richer staffing-capability model. |
 | **Adversarial probe library** | `probes/` directory exists but contains no probe files. No attempt has been made to write probes; failure taxonomy must be defined first before probes can be structured. |
 | **`method.md` + `ablation_results.json`** | No ablation experiments have been run. Ablation requires at least two model configurations and a held-out eval run per config to produce a comparison table. |
 | **`held_out_traces.jsonl`** | The τ²-Bench test split has not been run. Test split is sealed; a separate eval harness run targeting `--task-split-name test` is required and hasn't been scheduled yet due to OpenRouter infrastructure-error rate concern. |
