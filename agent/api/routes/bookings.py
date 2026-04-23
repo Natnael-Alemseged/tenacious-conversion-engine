@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 from fastapi import APIRouter, HTTPException
 
@@ -7,6 +9,23 @@ from agent.workflows.lead_orchestrator import LeadOrchestrator
 
 router = APIRouter()
 orchestrator = LeadOrchestrator()
+_log = logging.getLogger(__name__)
+
+
+def _route_log_extra(
+    *,
+    outcome: str,
+    status_code: int,
+    error_type: str = "",
+) -> dict[str, str]:
+    return {
+        "api_component": "bookings",
+        "api_metric": "bookings.discovery_call.request",
+        "api_route": "bookings.discovery_call",
+        "api_outcome": outcome,
+        "api_status_code": str(status_code),
+        "api_error_type": error_type,
+    }
 
 
 def _route_error(exc: Exception) -> HTTPException:
@@ -51,7 +70,7 @@ def _route_error(exc: Exception) -> HTTPException:
 @router.post("/discovery-call")
 def book_discovery_call(request: DiscoveryCallBookingRequest) -> dict:
     try:
-        return orchestrator.book_discovery_call(
+        result = orchestrator.book_discovery_call(
             attendee_name=request.attendee_name,
             attendee_email=request.attendee_email,
             start=request.start,
@@ -60,5 +79,20 @@ def book_discovery_call(request: DiscoveryCallBookingRequest) -> dict:
             attendee_phone=request.attendee_phone,
             metadata=request.metadata,
         )
+        _log.info(
+            "bookings.discovery_call",
+            extra=_route_log_extra(outcome="success", status_code=200),
+        )
+        return result
     except Exception as exc:
-        raise _route_error(exc) from exc
+        mapped = _route_error(exc)
+        _log.error(
+            "bookings.discovery_call",
+            extra=_route_log_extra(
+                outcome="failure",
+                status_code=mapped.status_code,
+                error_type=type(exc).__name__,
+            ),
+            exc_info=exc,
+        )
+        raise mapped from exc

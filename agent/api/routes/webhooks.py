@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import httpx
@@ -13,6 +14,7 @@ from agent.workflows.lead_orchestrator import LeadOrchestrator
 
 router = APIRouter()
 orchestrator = LeadOrchestrator()
+_log = logging.getLogger(__name__)
 STOP_KEYWORDS = {"STOP", "UNSUB", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}
 HELP_KEYWORDS = {"HELP"}
 
@@ -21,6 +23,25 @@ BOUNCE_EVENT_TYPES = {"email.bounced", "email.complained", "email.delivery_delay
 
 def _suppression_store() -> SmsSuppressionStore:
     return SmsSuppressionStore(settings.sms_suppression_path)
+
+
+def _route_log_extra(
+    *,
+    route: str,
+    outcome: str,
+    status_code: int,
+    error_type: str = "",
+    provider_kind: str = "",
+) -> dict[str, str]:
+    return {
+        "api_component": "webhooks",
+        "api_metric": f"{route}.request",
+        "api_route": route,
+        "api_outcome": outcome,
+        "api_status_code": str(status_code),
+        "api_error_type": error_type,
+        "api_provider_kind": provider_kind,
+    }
 
 
 def _route_error(exc: Exception) -> HTTPException:
@@ -157,13 +178,53 @@ def _sms_validation_http_exception(exc: ValidationError) -> HTTPException:
 @router.post("/email")
 def inbound_email(event: InboundEmailEvent) -> dict[str, str]:
     if event.event_type in BOUNCE_EVENT_TYPES:
-        orchestrator.handle_email_bounce(event)
+        try:
+            orchestrator.handle_email_bounce(event)
+        except Exception as exc:
+            _log.error(
+                "webhooks.email",
+                extra=_route_log_extra(
+                    route="webhooks.email",
+                    outcome="failure",
+                    status_code=500,
+                    error_type=type(exc).__name__,
+                ),
+                exc_info=exc,
+            )
+            raise _route_error(exc) from exc
+        _log.info(
+            "webhooks.email",
+            extra=_route_log_extra(
+                route="webhooks.email",
+                outcome="success",
+                status_code=200,
+            ),
+        )
         return {"status": "bounce_recorded", "event_type": event.event_type}
 
     try:
         orchestrator.handle_email(event)
     except Exception as exc:
+        status = _route_error(exc).status_code
+        _log.error(
+            "webhooks.email",
+            extra=_route_log_extra(
+                route="webhooks.email",
+                outcome="failure",
+                status_code=status,
+                error_type=type(exc).__name__,
+            ),
+            exc_info=exc,
+        )
         raise _route_error(exc) from exc
+    _log.info(
+        "webhooks.email",
+        extra=_route_log_extra(
+            route="webhooks.email",
+            outcome="success",
+            status_code=200,
+        ),
+    )
     return {"status": "accepted"}
 
 
@@ -172,6 +233,15 @@ async def inbound_sms(request: Request) -> dict[str, str]:
     # Africa's Talking sends application/x-www-form-urlencoded with "from" as a field name.
     content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type == "application/json":
+        _log.warning(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="failure",
+                status_code=415,
+                error_type="UnsupportedMediaType",
+            ),
+        )
         raise HTTPException(
             status_code=415,
             detail=_sms_error_payload(
@@ -192,6 +262,15 @@ async def inbound_sms(request: Request) -> dict[str, str]:
             message_id=_sms_form_string(form.get("id"), field="id"),
         )
     except ValidationError as exc:
+        _log.warning(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="failure",
+                status_code=422,
+                error_type=type(exc).__name__,
+            ),
+        )
         raise _sms_validation_http_exception(exc) from exc
 
     message = event.text.strip().upper()
@@ -199,6 +278,14 @@ async def inbound_sms(request: Request) -> dict[str, str]:
 
     if message in STOP_KEYWORDS:
         store.suppress(event.from_number)
+        _log.info(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="success",
+                status_code=200,
+            ),
+        )
         return {
             "status": "suppressed",
             "message": "You have been unsubscribed. Reply START to opt back in.",
@@ -206,18 +293,42 @@ async def inbound_sms(request: Request) -> dict[str, str]:
 
     if message == "START":
         store.unsuppress(event.from_number)
+        _log.info(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="success",
+                status_code=200,
+            ),
+        )
         return {
             "status": "resubscribed",
             "message": "You are opted back in and can receive scheduling messages again.",
         }
 
     if message in HELP_KEYWORDS:
+        _log.info(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="success",
+                status_code=200,
+            ),
+        )
         return {
             "status": "help",
             "message": "Reply STOP to unsubscribe or START to opt back in.",
         }
 
     if store.is_suppressed(event.from_number):
+        _log.info(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="success",
+                status_code=200,
+            ),
+        )
         return {
             "status": "ignored",
             "message": "Number is currently unsubscribed.",
@@ -226,5 +337,28 @@ async def inbound_sms(request: Request) -> dict[str, str]:
     try:
         orchestrator.handle_sms(event)
     except Exception as exc:
+        mapped = _sms_route_error(exc)
+        provider_kind = ""
+        if isinstance(mapped.detail, dict):
+            provider_kind = str(mapped.detail.get("error", {}).get("provider", {}).get("kind", ""))
+        _log.error(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="failure",
+                status_code=mapped.status_code,
+                error_type=type(exc).__name__,
+                provider_kind=provider_kind,
+            ),
+            exc_info=exc,
+        )
         raise _sms_route_error(exc) from exc
+    _log.info(
+        "webhooks.sms",
+        extra=_route_log_extra(
+            route="webhooks.sms",
+            outcome="success",
+            status_code=200,
+        ),
+    )
     return {"status": "accepted"}

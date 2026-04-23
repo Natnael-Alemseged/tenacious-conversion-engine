@@ -21,6 +21,11 @@ class BookingOkCrmWritebackFailsOrchestrator:
         )
 
 
+class BookingMissingUidOrchestrator:
+    def book_discovery_call(self, **kwargs) -> dict:
+        raise ValueError("Cal.com booking response is missing a booking uid.")
+
+
 class FailingWebhookOrchestrator:
     def handle_email(self, event) -> dict:
         raise httpx.ConnectError("connection refused")
@@ -65,6 +70,23 @@ def test_bookings_route_returns_503_on_unreachable_provider(monkeypatch) -> None
 
     assert response.status_code == 503
     assert "unreachable" in response.json()["detail"].lower()
+
+
+def test_bookings_route_returns_400_on_missing_booking_uid(monkeypatch) -> None:
+    monkeypatch.setattr(bookings, "orchestrator", BookingMissingUidOrchestrator())
+    client = TestClient(app)
+
+    response = client.post(
+        "/bookings/discovery-call",
+        json={
+            "attendee_name": "Jane Doe",
+            "attendee_email": "jane@example.com",
+            "start": "2026-04-25T09:00:00Z",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "missing a booking uid" in response.json()["detail"]
 
 
 def test_email_webhook_returns_503_on_unreachable_upstream(monkeypatch) -> None:
