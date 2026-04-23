@@ -4,6 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from agent.enrichment.ai_maturity import confidence_phrasing
 from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
 from agent.integrations.calcom import CalComClient
 from agent.integrations.hubspot import HubSpotClient
@@ -132,12 +133,41 @@ class LeadOrchestrator:
         signal_summary: str,
         icp_segment: int | None = None,
         ai_maturity_score: int | None = None,
+        confidence: float | None = None,
     ) -> dict[str, Any]:
-        subject = f"{company_name}: quick note"
+        _subjects: dict[int, str] = {
+            0: f"{company_name}: quick thought",
+            1: f"{company_name}: scaling after your recent raise",
+            2: f"{company_name}: doing more with your current team",
+            3: f"{company_name}: working with new technical leadership",
+            4: f"{company_name}: closing the AI capability gap",
+        }
+        _openers: dict[int, str] = {
+            0: f"I came across {company_name} and wanted to reach out.",
+            1: f"Congratulations on the recent funding — {company_name} is clearly in growth mode.",
+            2: "Teams navigating a restructure often find this is the right time to invest in automation.",  # noqa: E501
+            3: "New technical leadership often opens a window to re-evaluate the tooling stack.",
+            4: f"I noticed {company_name}'s signals suggest room to accelerate AI adoption.",
+        }
+        seg = icp_segment if icp_segment in _subjects else 0
+        subject = _subjects[seg]
+        opener = _openers[seg]
+
+        phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
+        if phrasing == "direct":
+            signal_line = signal_summary
+        elif phrasing == "hedged":
+            signal_line = f"Based on the signals we've seen: {signal_summary}"
+        else:
+            signal_line = (
+                f"We noticed some early indicators that might be relevant — {signal_summary}. "
+                "Is this on your radar?"
+            )
+
         html = (
-            "<p>Hi there,</p>"
-            f"<p>I took a quick look at {company_name} and found a relevant signal:</p>"
-            f"<p>{signal_summary}</p>"
+            f"<p>Hi there,</p>"
+            f"<p>{opener}</p>"
+            f"<p>{signal_line}</p>"
             "<p>If helpful, I can send over a short qualification brief "
             "and a few scheduling options.</p>"
         )
