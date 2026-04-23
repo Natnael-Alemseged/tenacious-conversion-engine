@@ -31,7 +31,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["agent"]
+packages = ["agent", "app"]
 
 [tool.ruff]
 line-length = 100
