@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from agent.enrichment import ai_maturity, crunchbase, job_posts, layoffs
 
 
@@ -33,12 +35,18 @@ def run(company_name: str, careers_url: str = "") -> dict:
     )
 
     # --- AI maturity ---
-    # Only pass signals observed from a real source. modern_ml_stack and strategic_comms
-    # are deferred until job_posts.py returns role_titles and a stronger comms signal exists.
-    ai_signals = {
-        "ai_roles_fraction": jobs.get("ai_roles_fraction", 0.0),
-        "named_ai_leadership": bool(leader_changes),
-    }
+    # Only pass signals observed from a real source. Avoid counting defaulted values toward
+    # confidence, so outbound phrasing cannot sound more certain than the evidence supports.
+    ai_signals: dict[str, Any] = {}
+    if careers_url and not jobs.get("error") and jobs.get("open_roles", 0) > 0:
+        ai_signals["ai_roles_fraction"] = jobs.get("ai_roles_fraction", 0.0)
+
+    named_ai_leadership = any(
+        ("ai" in (c.get("title") or "") or "scientist" in (c.get("title") or ""))
+        for c in (leader_changes or [])
+    )
+    if leader_changes:
+        ai_signals["named_ai_leadership"] = named_ai_leadership
     ai_score, ai_justification, ai_confidence = ai_maturity.score(ai_signals)
 
     # --- ICP segment classification ---
