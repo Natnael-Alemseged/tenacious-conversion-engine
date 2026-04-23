@@ -12,6 +12,18 @@ _WEIGHTS: dict[str, int] = {
 _MAX_WEIGHT = sum(_WEIGHTS.values())  # 12
 
 
+def confidence_phrasing(confidence: float) -> str:
+    """Map a confidence score to a phrasing style for outreach copy.
+
+    Returns one of 'direct', 'hedged', or 'exploratory'.
+    """
+    if confidence >= 0.8:
+        return "direct"
+    if confidence >= 0.5:
+        return "hedged"
+    return "exploratory"
+
+
 def score(signals: dict) -> tuple[int, str, float]:
     """Return (0-3 score, justification, confidence 0-1).
 

@@ -33,14 +33,35 @@ def run(company_name: str, careers_url: str = "") -> dict:
     )
 
     # --- AI maturity ---
+    # Derive modern_ml_stack from job post role titles.
+    _ml_keywords = {"dbt", "snowflake", "ray", "vllm", "databricks", "mlflow", "airflow", "spark"}
+    _role_titles = {t.lower() for t in (jobs.get("role_titles") or [])}
+    modern_ml_stack = bool(_role_titles & _ml_keywords)
+
+    # Derive strategic_comms from Crunchbase categories (AI/ML category presence).
+    _ai_categories = {
+        "artificial intelligence",
+        "machine learning",
+        "ai",
+        "ml",
+        "deep learning",
+        "nlp",
+    }
+    _cb_categories = {c.lower() for c in ((cb or {}).get("categories") or [])}
+    strategic_comms = bool(_cb_categories & _ai_categories)
+
     ai_signals = {
         "ai_roles_fraction": jobs.get("ai_roles_fraction", 0.0),
         "named_ai_leadership": bool(leader_changes),
+        "modern_ml_stack": modern_ml_stack,
+        "strategic_comms": strategic_comms,
+        # github_activity and exec_commentary require dedicated sources not yet integrated
     }
     ai_score, ai_justification, ai_confidence = ai_maturity.score(ai_signals)
 
-    # --- ICP segment classification (preliminary) ---
-    icp_segment: int | None = None
+    # --- ICP segment classification ---
+    # 0 = general (no dominant trigger); 1-4 = specific buying signal
+    icp_segment = 0
     if funding:
         icp_segment = 1  # recently funded
     elif layoff_events:
