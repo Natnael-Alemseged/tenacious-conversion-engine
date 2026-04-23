@@ -38,6 +38,7 @@ class ResendClient:
         html: str,
         reply_to: str | None = None,
         from_email: str | None = None,
+        tags: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "from": from_email or self.from_email,
@@ -47,6 +48,8 @@ class ResendClient:
         }
         if reply_to:
             payload["reply_to"] = reply_to
+        if tags:
+            payload["tags"] = [{"name": k, "value": v} for k, v in tags.items()]
 
         try:
             response = self.client.post("/emails", json=payload)
