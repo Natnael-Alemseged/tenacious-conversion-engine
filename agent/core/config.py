@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     crunchbase_odm_path: str = "./data/crunchbase_odm_sample.json"
     layoffs_fyi_path: str = "./data/layoffs_fyi.csv"
     sms_suppression_path: str = "./data/sms_suppression.json"
+    bench_summary_path: str = "./data/bench_summary.json"
 
     model_config = SettingsConfigDict(
         env_file=".env",
