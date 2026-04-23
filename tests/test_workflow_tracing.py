@@ -179,6 +179,71 @@ def test_inbound_reply_handlers_can_be_registered() -> None:
     ]
 
 
+def _make_orchestrator() -> tuple[LeadOrchestrator, FakeLangfuseClient, FakeHubSpotClient]:
+    langfuse = FakeLangfuseClient()
+    hubspot = FakeHubSpotClient()
+    orch = LeadOrchestrator(
+        hubspot=hubspot,
+        calcom=FakeCalComClient(),
+        langfuse=langfuse,
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+    return orch, langfuse, hubspot
+
+
+def test_send_outbound_email_segment1_direct_phrasing() -> None:
+    orch, _, _ = _make_orchestrator()
+    result = orch.send_outbound_email(
+        to_email="lead@acme.com",
+        company_name="Acme",
+        signal_summary="Series B announced last month.",
+        icp_segment=1,
+        confidence=0.9,
+    )
+    assert result["subject"] == "Acme: scaling after your recent raise"
+    assert "Based on" not in result["html"]
+    assert "early indicators" not in result["html"]
+    assert "Series B announced last month." in result["html"]
+
+
+def test_send_outbound_email_segment2_hedged_phrasing() -> None:
+    orch, _, _ = _make_orchestrator()
+    result = orch.send_outbound_email(
+        to_email="lead@corp.com",
+        company_name="Corp",
+        signal_summary="120 engineers laid off in Q4.",
+        icp_segment=2,
+        confidence=0.6,
+    )
+    assert result["subject"] == "Corp: doing more with your current team"
+    assert "Based on the signals we've seen" in result["html"]
+
+
+def test_send_outbound_email_exploratory_phrasing_low_confidence() -> None:
+    orch, _, _ = _make_orchestrator()
+    result = orch.send_outbound_email(
+        to_email="lead@startup.io",
+        company_name="Startup",
+        signal_summary="Some AI hiring detected.",
+        icp_segment=0,
+        confidence=0.2,
+    )
+    assert result["subject"] == "Startup: quick thought"
+    assert "early indicators" in result["html"]
+
+
+def test_send_outbound_email_none_segment_falls_back_to_general() -> None:
+    orch, _, _ = _make_orchestrator()
+    result = orch.send_outbound_email(
+        to_email="lead@co.com",
+        company_name="Co",
+        signal_summary="Signal here.",
+        icp_segment=None,
+    )
+    assert result["subject"] == "Co: quick thought"
+
+
 def test_bounce_handler_can_be_registered() -> None:
     recorded: list[tuple[str, str, str]] = []
 
