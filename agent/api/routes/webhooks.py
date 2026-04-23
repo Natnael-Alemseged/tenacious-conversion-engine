@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import ValidationError
 
 from agent.core.config import settings
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
@@ -34,13 +35,16 @@ def inbound_email(event: InboundEmailEvent) -> dict[str, str]:
 async def inbound_sms(request: Request) -> dict[str, str]:
     # Africa's Talking sends application/x-www-form-urlencoded with "from" as a field name.
     form = await request.form()
-    event = InboundSmsEvent(
-        from_number=form.get("from", ""),
-        to=form.get("to", ""),
-        text=form.get("text", ""),
-        date=form.get("date", ""),
-        message_id=form.get("id", ""),
-    )
+    try:
+        event = InboundSmsEvent(
+            from_number=form.get("from", ""),
+            to=form.get("to", ""),
+            text=form.get("text", ""),
+            date=form.get("date", ""),
+            message_id=form.get("id", ""),
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
     message = event.text.strip().upper()
     store = _suppression_store()
@@ -71,5 +75,8 @@ async def inbound_sms(request: Request) -> dict[str, str]:
             "message": "Number is currently unsubscribed.",
         }
 
-    orchestrator.handle_sms(event)
+    try:
+        orchestrator.handle_sms(event)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"status": "accepted"}

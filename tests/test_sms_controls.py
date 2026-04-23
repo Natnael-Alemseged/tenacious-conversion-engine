@@ -64,3 +64,18 @@ def test_suppressed_number_is_ignored_until_start(tmp_path, monkeypatch) -> None
 
     assert ignored.json()["status"] == "ignored"
     assert resumed.json()["status"] == "resubscribed"
+
+
+def test_malformed_sms_payload_returns_422(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        webhooks.settings,
+        "sms_suppression_path",
+        _suppression_path(tmp_path),
+    )
+
+    response = client.post(
+        "/webhooks/sms",
+        data={"from": "+251911000000", "to": "12345", "id": "6"},
+    )
+
+    assert response.status_code == 422
