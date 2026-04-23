@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -9,6 +10,10 @@ from agent.integrations.hubspot import HubSpotClient
 from agent.integrations.langfuse import LangfuseClient
 from agent.integrations.resend_email import ResendClient
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
+
+DownstreamEventHandler = (
+    Callable[[str, dict[str, Any], InboundEmailEvent | InboundSmsEvent], None] | None
+)
 
 
 def _now_iso() -> str:
@@ -23,12 +28,41 @@ class LeadOrchestrator:
         langfuse: LangfuseClient | None = None,
         resend: ResendClient | None = None,
         sms: AfricasTalkingSmsClient | None = None,
+        reply_handler: DownstreamEventHandler = None,
+        bounce_handler: DownstreamEventHandler = None,
     ) -> None:
         self.hubspot = hubspot or HubSpotClient()
         self.calcom = calcom or CalComClient()
         self.langfuse = langfuse or LangfuseClient()
         self.resend = resend or ResendClient()
         self.sms = sms or AfricasTalkingSmsClient()
+        self.reply_handler = reply_handler
+        self.bounce_handler = bounce_handler
+
+    def register_reply_handler(self, handler: DownstreamEventHandler) -> None:
+        self.reply_handler = handler
+
+    def register_bounce_handler(self, handler: DownstreamEventHandler) -> None:
+        self.bounce_handler = handler
+
+    def _emit_reply_handler(
+        self,
+        *,
+        channel: str,
+        result: dict[str, Any],
+        event: InboundEmailEvent | InboundSmsEvent,
+    ) -> None:
+        if self.reply_handler is not None:
+            self.reply_handler(channel, result, event)
+
+    def _emit_bounce_handler(
+        self,
+        *,
+        result: dict[str, Any],
+        event: InboundEmailEvent,
+    ) -> None:
+        if self.bounce_handler is not None:
+            self.bounce_handler("email_bounce", result, event)
 
     def handle_email(self, event: InboundEmailEvent) -> dict[str, Any]:
         enrichment_props = {
@@ -50,6 +84,7 @@ class LeadOrchestrator:
                 )
                 if span:
                     span.update(output=result)
+                self._emit_reply_handler(channel="email", result=result, event=event)
                 return result
 
     def handle_email_bounce(self, event: InboundEmailEvent) -> dict[str, Any]:
@@ -59,11 +94,13 @@ class LeadOrchestrator:
             "enrichment_timestamp": _now_iso(),
         }
         with self.langfuse.trace_workflow("handle_email_bounce", event.model_dump(mode="json")):
-            return self.hubspot.upsert_contact(
+            result = self.hubspot.upsert_contact(
                 identifier=event.from_email,
                 source="email_bounce",
                 properties=props,
             )
+            self._emit_bounce_handler(result=result, event=event)
+            return result
 
     def handle_sms(self, event: InboundSmsEvent) -> dict[str, Any]:
         enrichment_props = {
@@ -84,6 +121,7 @@ class LeadOrchestrator:
                 )
                 if span:
                     span.update(output=result)
+                self._emit_reply_handler(channel="sms", result=result, event=event)
                 return result
 
     def send_outbound_email(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from agent.models.webhooks import InboundEmailEvent
+from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.workflows.lead_orchestrator import LeadOrchestrator
 
 
@@ -138,3 +138,73 @@ def test_book_discovery_call_records_trace_and_returns_booking() -> None:
             "output": None,
         },
     ) in langfuse.events
+
+
+def test_inbound_reply_handlers_can_be_registered() -> None:
+    recorded: list[tuple[str, str, str]] = []
+
+    def reply_handler(
+        channel: str,
+        result: dict,
+        event: InboundEmailEvent | InboundSmsEvent,
+    ) -> None:
+        identifier = event.from_email if hasattr(event, "from_email") else event.from_number
+        recorded.append((channel, result["identifier"], identifier))
+
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        reply_handler=reply_handler,
+    )
+
+    orchestrator.handle_email(
+        InboundEmailEvent(
+            from_email="lead@example.com",
+            subject="Interested",
+        )
+    )
+    orchestrator.handle_sms(
+        InboundSmsEvent(
+            from_number="+251911000000",
+            text="sounds good",
+        )
+    )
+
+    assert recorded == [
+        ("email", "lead@example.com", "lead@example.com"),
+        ("sms", "+251911000000", "+251911000000"),
+    ]
+
+
+def test_bounce_handler_can_be_registered() -> None:
+    recorded: list[tuple[str, str, str]] = []
+
+    def bounce_handler(
+        channel: str,
+        result: dict,
+        event: InboundEmailEvent | InboundSmsEvent,
+    ) -> None:
+        assert isinstance(event, InboundEmailEvent)
+        recorded.append((channel, result["identifier"], event.event_type))
+
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        bounce_handler=bounce_handler,
+    )
+
+    orchestrator.handle_email_bounce(
+        InboundEmailEvent(
+            event_type="email.bounced",
+            from_email="lead@example.com",
+            bounce_type="hard_bounce",
+        )
+    )
+
+    assert recorded == [("email_bounce", "lead@example.com", "email.bounced")]
