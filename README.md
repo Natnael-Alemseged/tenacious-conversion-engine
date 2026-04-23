@@ -2,6 +2,12 @@
 
 FastAPI backend scaffold for the Tenacious sales-automation conversion engine challenge.
 
+## Safety and challenge-week assumptions (read first)
+
+- **Synthetic prospects only**: during the challenge week, this system must only interact with synthetic profiles derived from public data (no real customer contact data).
+- **Sink mode by default**: outbound email/SMS is **routed to staff sink destinations unless** `OUTBOUND_ENABLED=true`.
+- **Before any live use**: configure `OUTBOUND_ENABLED`, `OUTBOUND_SINK_EMAIL`, and `OUTBOUND_SINK_PHONE`, then verify routing in traces/CRM before sending to real recipients.
+
 ## What This Repo Covers
 
 - inbound email and SMS webhook entrypoints (Resend + Africa's Talking)
