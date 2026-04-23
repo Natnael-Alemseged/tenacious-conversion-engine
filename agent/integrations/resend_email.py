@@ -7,6 +7,12 @@ import httpx
 from agent.core.config import settings
 
 
+class ResendSendError(Exception):
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(f"Resend send failed ({status_code}): {message}")
+        self.status_code = status_code
+
+
 class ResendClient:
     def __init__(
         self,
@@ -42,9 +48,15 @@ class ResendClient:
         if reply_to:
             payload["reply_to"] = reply_to
 
-        response = self.client.post("/emails", json=payload)
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.client.post("/emails", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text
+            raise ResendSendError(exc.response.status_code, body) from exc
+        except httpx.RequestError as exc:
+            raise ResendSendError(0, str(exc)) from exc
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
