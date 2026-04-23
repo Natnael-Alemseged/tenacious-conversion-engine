@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import threading
-from contextlib import AsyncExitStack
 from typing import Any
 
 from mcp import ClientSession
@@ -16,9 +15,9 @@ from agent.core.config import settings
 class HubSpotClient:
     """HubSpot CRM client backed by the @hubspot/mcp-server MCP process.
 
-    Calls search_crm_objects and manage_crm_objects via the MCP protocol.
-    The async MCP session runs in a dedicated background thread so the public
-    interface remains fully synchronous — no changes needed in callers.
+    The MCP session runs in a dedicated background thread. Shutdown is
+    coordinated via an asyncio.Event so anyio cancel scopes are always
+    exited from the task that entered them.
     """
 
     def __init__(self, access_token: str | None = None) -> None:
@@ -26,7 +25,7 @@ class HubSpotClient:
         self._session: ClientSession | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._exit_stack: AsyncExitStack | None = None
+        self._stop_event: asyncio.Event | None = None
         self._lock = threading.Lock()
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
@@ -40,31 +39,33 @@ class HubSpotClient:
             thread.start()
             self._loop = loop
             self._thread = thread
-            future = asyncio.run_coroutine_threadsafe(self._async_start(), loop)
-            future.result(timeout=30)
 
-    async def _async_start(self) -> None:
-        self._exit_stack = AsyncExitStack()
+            ready = threading.Event()
+            asyncio.run_coroutine_threadsafe(self._main_loop(ready), loop)
+            if not ready.wait(timeout=30):
+                raise TimeoutError("HubSpot MCP server did not start within 30 seconds")
+
+    async def _main_loop(self, ready: threading.Event) -> None:
+        self._stop_event = asyncio.Event()
         env = {**os.environ, "HUBSPOT_ACCESS_TOKEN": self._access_token}
         server_params = StdioServerParameters(
             command="npx",
             args=["@hubspot/mcp-server"],
             env=env,
         )
-        read, write = await self._exit_stack.enter_async_context(stdio_client(server_params))
-        self._session = await self._exit_stack.enter_async_context(ClientSession(read, write))
-        await self._session.initialize()
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                self._session = session
+                ready.set()
+                await self._stop_event.wait()
+        self._session = None
 
     def close(self) -> None:
-        if self._loop is not None and self._session is not None:
-            future = asyncio.run_coroutine_threadsafe(self._async_close(), self._loop)
-            future.result(timeout=10)
-            self._loop.call_soon_threadsafe(self._loop.stop)
-
-    async def _async_close(self) -> None:
-        if self._exit_stack is not None:
-            await self._exit_stack.aclose()
-        self._session = None
+        if self._loop is not None and self._stop_event is not None:
+            self._loop.call_soon_threadsafe(self._stop_event.set)
+            if self._thread is not None:
+                self._thread.join(timeout=10)
 
     # ── MCP transport ─────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ class HubSpotClient:
     def _call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return self._run(self._call_tool(tool, arguments))
 
-    # ── public API (same interface as the former REST client) ─────────────────
+    # ── public API ────────────────────────────────────────────────────────────
 
     def upsert_contact(
         self,
@@ -131,25 +132,17 @@ class HubSpotClient:
         return self._search_contact(property_name="phone", value=phone_number)
 
     def _create_contact(self, properties: dict[str, Any]) -> dict[str, Any]:
-        result = self._call(
-            "manage_crm_objects",
-            {"createRequest": {"objects": [{"objectType": "contacts", "properties": properties}]}},
+        return self._call(
+            "create_crm_object",
+            {"objectType": "contacts", "properties": properties},
         )
-        results = result.get("results", [result])
-        return results[0] if results else result
 
     def update_contact(self, contact_id: str, properties: dict[str, Any]) -> dict[str, Any]:
         return self._call(
-            "manage_crm_objects",
+            "update_crm_object",
             {
-                "updateRequest": {
-                    "objects": [
-                        {
-                            "objectId": int(contact_id),
-                            "objectType": "contacts",
-                            "properties": properties,
-                        }
-                    ]
-                }
+                "objectType": "contacts",
+                "objectId": contact_id,
+                "properties": properties,
             },
         )

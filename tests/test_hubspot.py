@@ -39,6 +39,7 @@ def _make_client(responses: dict[str, Any]) -> tuple[HubSpotClient, list[tuple[s
     client._loop = loop
     client._thread = thread
     client._session = mock_session
+    client._stop_event = asyncio.Event()
 
     return client, calls
 
@@ -50,7 +51,7 @@ def test_upsert_contact_by_email_creates_when_not_found() -> None:
     client, calls = _make_client(
         {
             "search_crm_objects": {"results": []},
-            "manage_crm_objects": {"results": [{"id": "123"}]},
+            "create_crm_object": {"id": "123"},
         }
     )
 
@@ -61,19 +62,17 @@ def test_upsert_contact_by_email_creates_when_not_found() -> None:
     assert calls[0][1]["objectType"] == "contacts"
     assert calls[0][1]["filterGroups"][0]["filters"][0]["propertyName"] == "email"
     assert calls[0][1]["filterGroups"][0]["filters"][0]["value"] == "lead@example.com"
-    assert calls[1][0] == "manage_crm_objects"
-    assert "createRequest" in calls[1][1]
-    create_obj = calls[1][1]["createRequest"]["objects"][0]
-    assert create_obj["objectType"] == "contacts"
-    assert create_obj["properties"]["email"] == "lead@example.com"
-    assert create_obj["properties"]["lead_source"] == "email"
+    assert calls[1][0] == "create_crm_object"
+    assert calls[1][1]["objectType"] == "contacts"
+    assert calls[1][1]["properties"]["email"] == "lead@example.com"
+    assert calls[1][1]["properties"]["lead_source"] == "email"
 
 
 def test_upsert_contact_by_email_updates_when_found() -> None:
     client, calls = _make_client(
         {
             "search_crm_objects": {"results": [{"id": "456", "properties": {}}]},
-            "manage_crm_objects": {"id": "456"},
+            "update_crm_object": {"id": "456"},
         }
     )
 
@@ -83,12 +82,10 @@ def test_upsert_contact_by_email_updates_when_found() -> None:
 
     assert result["id"] == "456"
     assert calls[0][0] == "search_crm_objects"
-    assert calls[1][0] == "manage_crm_objects"
-    assert "updateRequest" in calls[1][1]
-    update_obj = calls[1][1]["updateRequest"]["objects"][0]
-    assert update_obj["objectId"] == 456
-    assert update_obj["objectType"] == "contacts"
-    assert update_obj["properties"]["company"] == "Acme"
+    assert calls[1][0] == "update_crm_object"
+    assert calls[1][1]["objectId"] == "456"
+    assert calls[1][1]["objectType"] == "contacts"
+    assert calls[1][1]["properties"]["company"] == "Acme"
 
 
 # ── upsert by phone ───────────────────────────────────────────────────────────
@@ -98,7 +95,7 @@ def test_upsert_contact_by_phone_creates_when_not_found() -> None:
     client, calls = _make_client(
         {
             "search_crm_objects": {"results": []},
-            "manage_crm_objects": {"results": [{"id": "789"}]},
+            "create_crm_object": {"id": "789"},
         }
     )
 
@@ -108,26 +105,24 @@ def test_upsert_contact_by_phone_creates_when_not_found() -> None:
     assert calls[0][0] == "search_crm_objects"
     assert calls[0][1]["filterGroups"][0]["filters"][0]["propertyName"] == "phone"
     assert calls[0][1]["filterGroups"][0]["filters"][0]["value"] == "+251911000000"
-    assert calls[1][0] == "manage_crm_objects"
-    create_obj = calls[1][1]["createRequest"]["objects"][0]
-    assert create_obj["properties"]["phone"] == "+251911000000"
-    assert create_obj["properties"]["lead_source"] == "sms"
+    assert calls[1][0] == "create_crm_object"
+    assert calls[1][1]["properties"]["phone"] == "+251911000000"
+    assert calls[1][1]["properties"]["lead_source"] == "sms"
 
 
 def test_upsert_contact_by_phone_updates_when_found() -> None:
     client, calls = _make_client(
         {
             "search_crm_objects": {"results": [{"id": "101", "properties": {}}]},
-            "manage_crm_objects": {"id": "101"},
+            "update_crm_object": {"id": "101"},
         }
     )
 
     result = client.upsert_contact("+251911000000", source="sms")
 
     assert result["id"] == "101"
-    assert calls[1][0] == "manage_crm_objects"
-    assert "updateRequest" in calls[1][1]
-    assert calls[1][1]["updateRequest"]["objects"][0]["objectId"] == 101
+    assert calls[1][0] == "update_crm_object"
+    assert calls[1][1]["objectId"] == "101"
 
 
 # ── search_contact_by_phone ───────────────────────────────────────────────────
@@ -150,14 +145,12 @@ def test_search_contact_by_phone_returns_first_result() -> None:
 
 
 def test_update_contact_sends_update_request() -> None:
-    client, calls = _make_client({"manage_crm_objects": {"id": "99"}})
+    client, calls = _make_client({"update_crm_object": {"id": "99"}})
 
     result = client.update_contact("99", {"firstname": "Jane"})
 
     assert result["id"] == "99"
-    assert calls[0][0] == "manage_crm_objects"
-    assert "updateRequest" in calls[0][1]
-    obj = calls[0][1]["updateRequest"]["objects"][0]
-    assert obj["objectId"] == 99
-    assert obj["objectType"] == "contacts"
-    assert obj["properties"]["firstname"] == "Jane"
+    assert calls[0][0] == "update_crm_object"
+    assert calls[0][1]["objectId"] == "99"
+    assert calls[0][1]["objectType"] == "contacts"
+    assert calls[0][1]["properties"]["firstname"] == "Jane"
