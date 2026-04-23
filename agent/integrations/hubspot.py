@@ -30,37 +30,6 @@ class HubSpotClient:
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
-    def _ensure_started(self) -> None:
-        with self._lock:
-            if self._session is not None:
-                return
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(target=loop.run_forever, daemon=True, name="hubspot-mcp")
-            thread.start()
-            self._loop = loop
-            self._thread = thread
-
-            ready = threading.Event()
-            asyncio.run_coroutine_threadsafe(self._main_loop(ready), loop)
-            if not ready.wait(timeout=30):
-                raise TimeoutError("HubSpot MCP server did not start within 30 seconds")
-
-    async def _main_loop(self, ready: threading.Event) -> None:
-        self._stop_event = asyncio.Event()
-        env = {**os.environ, "HUBSPOT_ACCESS_TOKEN": self._access_token}
-        server_params = StdioServerParameters(
-            command="npx",
-            args=["@hubspot/mcp-server"],
-            env=env,
-        )
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                self._session = session
-                ready.set()
-                await self._stop_event.wait()
-        self._session = None
-
     def close(self) -> None:
         if self._loop is not None and self._stop_event is not None:
             self._loop.call_soon_threadsafe(self._stop_event.set)
@@ -70,20 +39,42 @@ class HubSpotClient:
     # ── MCP transport ─────────────────────────────────────────────────────────
 
     def _run(self, coro: Any) -> Any:
-        self._ensure_started()
-        assert self._loop is not None
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=30)
+        if self._loop is not None:
+            return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=30)
+        return asyncio.run(coro)
 
     async def _call_tool(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        assert self._session is not None
-        result = await self._session.call_tool(tool, arguments)
+        if self._session is not None:
+            result = await self._session.call_tool(tool, arguments)
+            return self._decode_result(result)
+
+        env = {**os.environ, "PRIVATE_APP_ACCESS_TOKEN": self._access_token}
+        server_params = StdioServerParameters(
+            command="npx",
+            args=["-y", "@hubspot/mcp-server"],
+            env=env,
+        )
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool, arguments)
+                return self._decode_result(result)
+
+    def _decode_result(self, result: Any) -> dict[str, Any]:
+        texts: list[str] = []
         for item in result.content:
             text = getattr(item, "text", None)
             if text:
+                texts.append(text)
                 try:
                     return json.loads(text)
                 except json.JSONDecodeError:
-                    return {"raw": text}
+                    continue
+        if getattr(result, "isError", False):
+            message = "\n".join(texts) if texts else "Unknown HubSpot MCP error"
+            raise RuntimeError(message)
+        if texts:
+            return {"raw": "\n".join(texts)}
         return {}
 
     def _call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -91,13 +82,16 @@ class HubSpotClient:
 
     # ── public API ────────────────────────────────────────────────────────────
 
+    def _stringify_properties(self, properties: dict[str, Any]) -> dict[str, str]:
+        return {key: str(value) for key, value in properties.items() if value is not None}
+
     def upsert_contact(
         self,
         identifier: str,
         source: str,
         properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        props = dict(properties or {})
+        props = self._stringify_properties(dict(properties or {}))
         props.setdefault("lead_source", source)
 
         if "@" in identifier:
@@ -115,7 +109,7 @@ class HubSpotClient:
 
     def _search_contact(self, *, property_name: str, value: str) -> dict[str, Any] | None:
         result = self._call(
-            "search_crm_objects",
+            "hubspot-search-objects",
             {
                 "objectType": "contacts",
                 "filterGroups": [
@@ -132,17 +126,22 @@ class HubSpotClient:
         return self._search_contact(property_name="phone", value=phone_number)
 
     def _create_contact(self, properties: dict[str, Any]) -> dict[str, Any]:
-        return self._call(
-            "create_crm_object",
-            {"objectType": "contacts", "properties": properties},
+        result = self._call(
+            "hubspot-batch-create-objects",
+            {"objectType": "contacts", "inputs": [{"properties": properties}]},
         )
+        results = result.get("results", [])
+        return results[0] if results else result
 
     def update_contact(self, contact_id: str, properties: dict[str, Any]) -> dict[str, Any]:
-        return self._call(
-            "update_crm_object",
+        result = self._call(
+            "hubspot-batch-update-objects",
             {
                 "objectType": "contacts",
-                "objectId": contact_id,
-                "properties": properties,
+                "inputs": [
+                    {"id": str(contact_id), "properties": self._stringify_properties(properties)}
+                ],
             },
         )
+        results = result.get("results", [])
+        return results[0] if results else result
