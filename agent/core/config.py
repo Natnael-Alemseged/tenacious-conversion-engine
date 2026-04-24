@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     # LLM via OpenRouter
     openrouter_api_key: str = ""
     openrouter_api_keys: str = ""
+    open_router_key_1: str = ""
+    open_router_key_2: str = ""
+    open_router_key_3: str = ""
+    open_router_key_4: str = ""
+    open_router_key_5: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "qwen/qwen3-235b-a22b"
 
@@ -76,8 +81,16 @@ class Settings(BaseSettings):
             key = raw.strip()
             if key and key not in keys:
                 keys.append(key)
-        if self.openrouter_api_key and self.openrouter_api_key not in keys:
-            keys.append(self.openrouter_api_key)
+        for key in (
+            self.openrouter_api_key,
+            self.open_router_key_1,
+            self.open_router_key_2,
+            self.open_router_key_3,
+            self.open_router_key_4,
+            self.open_router_key_5,
+        ):
+            if key and key not in keys:
+                keys.append(key)
         return keys
 
 
