@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from agent.core.config import settings
+
+_log = logging.getLogger(__name__)
 
 
 class ResendSendError(Exception):
@@ -63,32 +66,121 @@ class ResendClient:
         if tags:
             payload["tags"] = [{"name": k, "value": v} for k, v in tags.items()]
 
+        _log.debug(
+            "resend.send_email",
+            extra={
+                "email_component": "resend",
+                "email_metric": "send_email",
+                "email_outcome": "attempt",
+                "email_to": to_email,
+                "email_subject": subject,
+            },
+        )
         try:
             response = self.client.post("/emails", json=payload)
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+            _log.info(
+                "resend.send_email",
+                extra={
+                    "email_component": "resend",
+                    "email_metric": "send_email",
+                    "email_outcome": "success",
+                    "email_to": to_email,
+                    "email_subject": subject,
+                    "email_status_code": response.status_code,
+                },
+            )
+            return body
         except httpx.HTTPStatusError as exc:
-            body = exc.response.text
-            raise ResendSendError(
-                exc.response.status_code,
-                body,
-                error_kind="upstream_http",
-            ) from exc
-        except httpx.RequestError as exc:
-            raise ResendSendError(0, str(exc), error_kind="request_transport") from exc
-
-    def get_received_email(self, email_id: str) -> dict[str, Any]:
-        try:
-            response = self.client.get(f"/emails/receiving/{email_id}")
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as exc:
+            _log.error(
+                "resend.send_email",
+                extra={
+                    "email_component": "resend",
+                    "email_metric": "send_email",
+                    "email_outcome": "error",
+                    "email_error_kind": "upstream_http",
+                    "email_to": to_email,
+                    "email_status_code": exc.response.status_code,
+                },
+                exc_info=exc,
+            )
             raise ResendSendError(
                 exc.response.status_code,
                 exc.response.text,
                 error_kind="upstream_http",
             ) from exc
         except httpx.RequestError as exc:
+            _log.error(
+                "resend.send_email",
+                extra={
+                    "email_component": "resend",
+                    "email_metric": "send_email",
+                    "email_outcome": "error",
+                    "email_error_kind": "request_transport",
+                    "email_to": to_email,
+                    "email_status_code": 0,
+                },
+                exc_info=exc,
+            )
+            raise ResendSendError(0, str(exc), error_kind="request_transport") from exc
+
+    def get_received_email(self, email_id: str) -> dict[str, Any]:
+        _log.debug(
+            "resend.get_received_email",
+            extra={
+                "email_component": "resend",
+                "email_metric": "get_received_email",
+                "email_outcome": "attempt",
+                "email_id": email_id,
+            },
+        )
+        try:
+            response = self.client.get(f"/emails/receiving/{email_id}")
+            response.raise_for_status()
+            body = response.json()
+            _log.info(
+                "resend.get_received_email",
+                extra={
+                    "email_component": "resend",
+                    "email_metric": "get_received_email",
+                    "email_outcome": "success",
+                    "email_id": email_id,
+                    "email_status_code": response.status_code,
+                },
+            )
+            return body
+        except httpx.HTTPStatusError as exc:
+            _log.error(
+                "resend.get_received_email",
+                extra={
+                    "email_component": "resend",
+                    "email_metric": "get_received_email",
+                    "email_outcome": "error",
+                    "email_error_kind": "upstream_http",
+                    "email_id": email_id,
+                    "email_status_code": exc.response.status_code,
+                },
+                exc_info=exc,
+            )
+            raise ResendSendError(
+                exc.response.status_code,
+                exc.response.text,
+                error_kind="upstream_http",
+            ) from exc
+        except httpx.RequestError as exc:
+            _log.error(
+                "resend.get_received_email",
+                extra={
+                    "email_component": "resend",
+                    "email_metric": "get_received_email",
+                    "email_outcome": "error",
+                    "email_error_kind": "request_transport",
+                    "email_id": email_id,
+                    "email_status_code": 0,
+                },
+                exc_info=exc,
+            )
             raise ResendSendError(0, str(exc), error_kind="request_transport") from exc
 
     def _headers(self) -> dict[str, str]:
