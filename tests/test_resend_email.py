@@ -79,3 +79,34 @@ def test_send_email_transport_error_sets_error_kind(monkeypatch) -> None:
 
     assert excinfo.value.error_kind == "request_transport"
     assert excinfo.value.status_code == 0
+
+
+def test_send_email_uses_default_reply_to_from_settings(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read().decode("utf-8"))
+        return httpx.Response(200, json={"id": "email_456"})
+
+    monkeypatch.setattr(
+        "agent.integrations.resend_email.settings.resend_from_email",
+        "team@example.com",
+    )
+    monkeypatch.setattr(
+        "agent.integrations.resend_email.settings.resend_reply_to_email",
+        "anything@talauminai.resend.app",
+    )
+
+    client = ResendClient(
+        api_key="re_test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.send_email(
+        to_email="lead@example.com",
+        subject="Hello",
+        html="<p>Hi</p>",
+    )
+
+    assert response["id"] == "email_456"
+    assert captured["json"]["reply_to"] == "anything@talauminai.resend.app"

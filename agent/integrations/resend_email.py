@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import resend
 
 from agent.core.config import settings
 
@@ -33,6 +34,7 @@ class ResendClient:
     ) -> None:
         self.api_key = api_key if api_key is not None else settings.resend_api_key
         self.from_email = settings.resend_from_email
+        self.reply_to_email = settings.resend_reply_to_email
         self.client = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers=self._headers(),
@@ -56,8 +58,9 @@ class ResendClient:
             "subject": subject,
             "html": html,
         }
-        if reply_to:
-            payload["reply_to"] = reply_to
+        effective_reply_to = reply_to or self.reply_to_email
+        if effective_reply_to:
+            payload["reply_to"] = effective_reply_to
         if tags:
             payload["tags"] = [{"name": k, "value": v} for k, v in tags.items()]
 
@@ -74,6 +77,14 @@ class ResendClient:
             ) from exc
         except httpx.RequestError as exc:
             raise ResendSendError(0, str(exc), error_kind="request_transport") from exc
+
+    def get_received_email(self, email_id: str) -> dict[str, Any]:
+        try:
+            resend.api_key = self.api_key
+            email = resend.Emails.Receiving.get(email_id)
+            return dict(email)
+        except Exception as exc:
+            raise ResendSendError(0, str(exc), error_kind="receiving_api_error") from exc
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
