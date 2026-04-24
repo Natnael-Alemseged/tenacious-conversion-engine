@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from agent.core.config import settings
+
+_log = logging.getLogger(__name__)
 
 
 class AfricasTalkingSendError(Exception):
@@ -62,6 +65,16 @@ class AfricasTalkingSmsClient:
         if enqueue:
             data["enqueue"] = 1
 
+        _log.debug(
+            "africastalking.send_sms",
+            extra={
+                "sms_component": "africastalking",
+                "sms_metric": "send_sms",
+                "sms_outcome": "attempt",
+                "sms_to": to_phone,
+                "sms_username": self.username,
+            },
+        )
         try:
             response = self.client.post("/version1/messaging", data=data)
             response.raise_for_status()
@@ -72,20 +85,67 @@ class AfricasTalkingSmsClient:
                     "Expected Africa's Talking JSON object response.",
                     error_kind="malformed_response",
                 )
+            _log.info(
+                "africastalking.send_sms",
+                extra={
+                    "sms_component": "africastalking",
+                    "sms_metric": "send_sms",
+                    "sms_outcome": "success",
+                    "sms_to": to_phone,
+                    "sms_username": self.username,
+                    "sms_status_code": response.status_code,
+                },
+            )
             return body
         except httpx.HTTPStatusError as exc:
+            _log.error(
+                "africastalking.send_sms",
+                extra={
+                    "sms_component": "africastalking",
+                    "sms_metric": "send_sms",
+                    "sms_outcome": "error",
+                    "sms_error_kind": "upstream_http",
+                    "sms_to": to_phone,
+                    "sms_status_code": exc.response.status_code,
+                },
+                exc_info=exc,
+            )
             raise AfricasTalkingSendError(
                 exc.response.status_code,
                 exc.response.text,
                 error_kind="upstream_http",
             ) from exc
         except ValueError as exc:
+            _log.error(
+                "africastalking.send_sms",
+                extra={
+                    "sms_component": "africastalking",
+                    "sms_metric": "send_sms",
+                    "sms_outcome": "error",
+                    "sms_error_kind": "malformed_response",
+                    "sms_to": to_phone,
+                    "sms_status_code": 0,
+                },
+                exc_info=exc,
+            )
             raise AfricasTalkingSendError(
                 0,
                 f"Invalid JSON from Africa's Talking: {exc}",
                 error_kind="malformed_response",
             ) from exc
         except httpx.RequestError as exc:
+            _log.error(
+                "africastalking.send_sms",
+                extra={
+                    "sms_component": "africastalking",
+                    "sms_metric": "send_sms",
+                    "sms_outcome": "error",
+                    "sms_error_kind": "request_transport",
+                    "sms_to": to_phone,
+                    "sms_status_code": 0,
+                },
+                exc_info=exc,
+            )
             raise AfricasTalkingSendError(
                 0,
                 str(exc),
