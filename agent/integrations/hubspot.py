@@ -78,9 +78,18 @@ class HubSpotClient:
                     await session.initialize()
                     result = await session.call_tool(tool, arguments)
                     return self._decode_result(result)
-        except Exception:
-            # If MCP can't start (missing node, sandboxed runtime, transient stdio issues),
-            # fall back to direct HTTP so webhook handlers remain reliable.
+        except Exception as exc:
+            # anyio task groups wrap exceptions raised inside context managers in
+            # ExceptionGroup. Unwrap one level to check for HubSpotMcpError, which
+            # means the MCP server connected fine but HubSpot rejected the request —
+            # retrying via HTTP would produce the same error, so re-raise immediately.
+            inner: BaseException = exc
+            while isinstance(inner, BaseExceptionGroup) and len(inner.exceptions) == 1:
+                inner = inner.exceptions[0]
+            if isinstance(inner, HubSpotMcpError):
+                raise inner from exc
+            # If MCP can't start (missing node, sandboxed runtime, transient stdio
+            # issues), fall back to direct HTTP so webhook handlers remain reliable.
             return self._call_tool_http(tool, arguments)
 
     def _http_client(self) -> httpx.Client:

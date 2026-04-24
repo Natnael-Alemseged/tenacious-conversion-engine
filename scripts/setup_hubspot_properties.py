@@ -182,6 +182,18 @@ CUSTOM_PROPERTIES = [
         "groupName": "contactinformation",
         "description": "true/false — contact has replied to at least one SMS.",
     },
+    # Lead source tracking
+    {
+        "name": "lead_source",
+        "label": "Lead Source",
+        "type": "string",
+        "fieldType": "text",
+        "groupName": "contactinformation",
+        "description": (
+            "Channel that originated this lead "
+            "(e.g. inbound_email_reply, inbound_sms_reply, outbound_email)."
+        ),
+    },
     # Email bounce
     {
         "name": "email_bounce_type",
