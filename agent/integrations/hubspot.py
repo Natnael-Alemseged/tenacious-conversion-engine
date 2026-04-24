@@ -61,8 +61,8 @@ class HubSpotClient:
             result = await self._session.call_tool(tool, arguments)
             return self._decode_result(result)
 
-        # Render deployments frequently lack Node/npm toolchains; fall back to direct
-        # HubSpot HTTP calls in that case so webhooks don't 500.
+        # Render deployments frequently lack (or restrict) Node/npm toolchains. Prefer
+        # a direct HubSpot HTTP fallback whenever MCP stdio transport isn't usable.
         if shutil.which("npx") is None:
             return self._call_tool_http(tool, arguments)
 
@@ -72,11 +72,16 @@ class HubSpotClient:
             args=["-y", "@hubspot/mcp-server"],
             env=env,
         )
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(tool, arguments)
-                return self._decode_result(result)
+        try:
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(tool, arguments)
+                    return self._decode_result(result)
+        except Exception:
+            # If MCP can't start (missing node, sandboxed runtime, transient stdio issues),
+            # fall back to direct HTTP so webhook handlers remain reliable.
+            return self._call_tool_http(tool, arguments)
 
     def _http_client(self) -> httpx.Client:
         if self._http is None:
