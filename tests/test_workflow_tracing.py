@@ -407,6 +407,33 @@ def test_outbound_sms_routes_to_sink_when_disabled(monkeypatch) -> None:
     assert result["to_phone"] == "+15555550123"
 
 
+def test_outbound_email_requires_sink_when_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        False,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_sink_email",
+        "",
+    )
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    with pytest.raises(ValueError, match="no sink is configured for channel=email"):
+        orchestrator.send_outbound_email(
+            to_email="real-prospect@example.com",
+            company_name="Co",
+            signal_summary="Signal here.",
+            icp_segment=0,
+            confidence=0.6,
+        )
+
+
 def test_outbound_email_requires_bench_gate(monkeypatch) -> None:
     orch, _, _ = _make_orchestrator(monkeypatch)
 
