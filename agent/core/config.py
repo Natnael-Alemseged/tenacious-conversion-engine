@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     # Resend
     resend_api_key: str = ""
     resend_from_email: str = ""
+    resend_reply_to_email: str = ""
+    resend_webhook_signing_secret: str = ""
 
     # Outbound safety (Tenacious brief): sink routing unless explicitly enabled
     outbound_enabled: bool = False
