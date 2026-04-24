@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 
 from agent.enrichment.ai_maturity import confidence_phrasing, score
-from agent.enrichment.artifacts import write_hiring_signal_brief
+from agent.enrichment.artifacts import (
+    write_competitor_gap_brief,
+    write_discovery_call_context_brief,
+    write_hiring_signal_brief,
+)
 from agent.enrichment.pipeline import run
 from agent.enrichment.schemas import HiringSignalBrief
 
@@ -208,3 +212,88 @@ def test_write_hiring_signal_brief_emits_public_schema_shape(tmp_path, monkeypat
     assert payload["bench_to_brief_match"]["bench_available"] is True
     assert "generated_at" in payload
     assert "data_sources_checked" in payload
+
+
+def test_write_competitor_gap_brief_emits_benchmark_backed_shape(tmp_path, monkeypatch) -> None:
+    odm = tmp_path / "odm.json"
+    odm.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Acme Data",
+                    "categories": ["analytics", "python", "snowflake"],
+                    "website": "https://acme.example",
+                }
+            ]
+        )
+    )
+    layoffs_csv = tmp_path / "layoffs.csv"
+    layoffs_csv.write_text("Company,Date,Laid_Off_Count\n")
+    bench = tmp_path / "bench.json"
+    bench.write_text(json.dumps({"stacks": {"python": {"available_engineers": 2}}}))
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.crunchbase.settings.crunchbase_odm_path", str(odm)
+    )
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.layoffs.settings.layoffs_fyi_path", str(layoffs_csv)
+    )
+    monkeypatch.setattr("agent.enrichment.pipeline.settings.bench_summary_path", str(bench))
+
+    output_path = tmp_path / "competitor_gap_brief.json"
+    payload = write_competitor_gap_brief(
+        company_name="Acme Data",
+        careers_url="https://acme.example/careers",
+        path=str(output_path),
+    )
+
+    assert output_path.exists()
+    saved = json.loads(output_path.read_text())
+    assert saved["prospect_domain"] == "acme.example"
+    assert len(saved["competitors_analyzed"]) >= 5
+    assert saved["benchmark_source"] == "bundled_sample_competitor_gap_brief"
+    assert payload["gap_quality_self_check"]["all_peer_evidence_has_source_url"] is True
+
+
+def test_write_discovery_call_context_brief_emits_required_sections(tmp_path, monkeypatch) -> None:
+    odm = tmp_path / "odm.json"
+    odm.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Acme Data",
+                    "categories": ["analytics", "python", "snowflake"],
+                    "website": "https://acme.example",
+                }
+            ]
+        )
+    )
+    layoffs_csv = tmp_path / "layoffs.csv"
+    layoffs_csv.write_text("Company,Date,Laid_Off_Count\n")
+    bench = tmp_path / "bench.json"
+    bench.write_text(json.dumps({"stacks": {"python": {"available_engineers": 2}}}))
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.crunchbase.settings.crunchbase_odm_path", str(odm)
+    )
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.layoffs.settings.layoffs_fyi_path", str(layoffs_csv)
+    )
+    monkeypatch.setattr("agent.enrichment.pipeline.settings.bench_summary_path", str(bench))
+
+    output_path = tmp_path / "discovery_call_context_brief.md"
+    content = write_discovery_call_context_brief(
+        company_name="Acme Data",
+        careers_url="https://acme.example/careers",
+        path=str(output_path),
+        prospect_name="Jordan Doe",
+        prospect_title="VP Engineering",
+        call_datetime_utc="2026-04-25T09:00:00Z",
+        call_datetime_prospect_tz="2026-04-25 11:00 EAT",
+        tenacious_lead_name="Yabebal",
+        original_subject="Acme Data: quick thought",
+    )
+
+    assert output_path.exists()
+    assert "# Discovery Call Context Brief" in content
+    assert "## 3. Competitor gap findings" in content
+    assert "## 4. Bench-to-brief match" in content
+    assert "## 10. Agent confidence and unknowns" in content
