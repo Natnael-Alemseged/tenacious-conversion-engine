@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
 from agent.core.config import settings
 
-BOOKINGS_API_VERSION = "2026-02-25"
 SLOTS_API_VERSION = "2024-09-04"
 
 
@@ -16,6 +16,7 @@ class CalComClient:
         api_key: str | None = None,
         base_url: str | None = None,
         event_type_id: int | None = None,
+        username: str | None = None,
         timeout: float = 10.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
@@ -24,6 +25,7 @@ class CalComClient:
         self.event_type_id = (
             event_type_id if event_type_id is not None else settings.calcom_event_type_id
         )
+        self.username = username if username is not None else settings.calcom_username
         self.client = httpx.Client(
             base_url=self.base_url,
             headers=self._headers(),
@@ -44,23 +46,20 @@ class CalComClient:
         language: str = "en",
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        response = self.client.post(
-            "/v2/bookings",
-            headers={"cal-api-version": BOOKINGS_API_VERSION},
-            json={
-                "start": start,
-                "attendee": {
-                    "name": name,
-                    "email": email,
-                    "timeZone": timezone,
-                    "language": language,
-                    "phoneNumber": phone_number,
-                },
-                "eventTypeId": event_type_id or self.event_type_id,
-                "lengthInMinutes": length_in_minutes,
-                "metadata": metadata or {},
-            },
-        )
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(UTC)
+        end_dt = start_dt + timedelta(minutes=length_in_minutes)
+        payload: dict[str, Any] = {
+            "eventTypeId": event_type_id or self.event_type_id,
+            "responses": {"name": name, "email": email},
+            "start": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "end": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "timeZone": timezone,
+            "language": language,
+            "metadata": metadata or {},
+        }
+        if self.username:
+            payload["user"] = self.username
+        response = self.client.post("/book/event", json=payload)
         response.raise_for_status()
         return response.json()
 
