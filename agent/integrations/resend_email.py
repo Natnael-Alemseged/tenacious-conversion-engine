@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-import resend
 
 from agent.core.config import settings
 
@@ -80,11 +79,17 @@ class ResendClient:
 
     def get_received_email(self, email_id: str) -> dict[str, Any]:
         try:
-            resend.api_key = self.api_key
-            email = resend.Emails.Receiving.get(email_id)
-            return dict(email)
-        except Exception as exc:
-            raise ResendSendError(0, str(exc), error_kind="receiving_api_error") from exc
+            response = self.client.get(f"/emails/receiving/{email_id}")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise ResendSendError(
+                exc.response.status_code,
+                exc.response.text,
+                error_kind="upstream_http",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ResendSendError(0, str(exc), error_kind="request_transport") from exc
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
