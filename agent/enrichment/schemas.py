@@ -42,6 +42,9 @@ class BenchSignalData(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     hits: list[str] = Field(default_factory=list)
     bench_to_brief_gate_passed: bool = False
+    required_stacks: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    available_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class AiMaturitySignal(BaseModel):
@@ -105,12 +108,15 @@ class HiringSignalBrief(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     company_name: str
+    company_domain: str = ""
+    generated_at: str = ""
     icp_segment: int = Field(
         0,
         ge=0,
         le=4,
         description="0 = general; 1–4 = dominant buying-signal bucket from the brief.",
     )
+    segment_confidence: float = Field(0.0, ge=0, le=1)
     overall_confidence: float = Field(
         ...,
         ge=0,
@@ -125,6 +131,9 @@ class HiringSignalBrief(BaseModel):
         description="Weighted blend emphasizing firmographics + live job-page evidence.",
     )
     signals: EnrichmentSignals
+    tech_stack: list[str] = Field(default_factory=list)
+    data_sources_checked: list[dict[str, Any]] = Field(default_factory=list)
+    honesty_flags: list[str] = Field(default_factory=list)
 
     def to_public_dict(self) -> dict[str, Any]:
         """JSON-serializable dict matching the historical pipeline shape (+ weighted overall)."""

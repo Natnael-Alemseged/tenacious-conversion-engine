@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from agent.enrichment.ai_maturity import confidence_phrasing, score
+from agent.enrichment.artifacts import write_hiring_signal_brief
 from agent.enrichment.pipeline import run
 from agent.enrichment.schemas import HiringSignalBrief
 
@@ -104,3 +107,104 @@ def test_pipeline_icp_segment_defaults_to_zero_when_no_signals(tmp_path, monkeyp
     assert roundtrip.overall_confidence == result.overall_confidence
     assert result.signals.funding.confidence_meta.tier == "none"
     assert result.signals.funding.confidence_meta.rationale_codes == ("funding_no_company_context",)
+
+
+def test_pipeline_uses_stack_based_bench_summary(tmp_path, monkeypatch) -> None:
+    odm = tmp_path / "odm.json"
+    odm.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Acme Data",
+                    "categories": ["analytics", "python", "snowflake"],
+                    "website": "https://acme.example",
+                }
+            ]
+        )
+    )
+    layoffs_csv = tmp_path / "layoffs.csv"
+    layoffs_csv.write_text("Company,Date,Laid_Off_Count\n")
+    bench = tmp_path / "bench.json"
+    bench.write_text(
+        json.dumps(
+            {
+                "stacks": {
+                    "python": {"available_engineers": 2, "skill_subsets": ["FastAPI"]},
+                    "data": {"available_engineers": 1, "skill_subsets": ["Snowflake", "dbt"]},
+                    "ml": {"available_engineers": 0, "skill_subsets": ["LangChain"]},
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.crunchbase.settings.crunchbase_odm_path", str(odm)
+    )
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.layoffs.settings.layoffs_fyi_path", str(layoffs_csv)
+    )
+    monkeypatch.setattr("agent.enrichment.pipeline.settings.bench_summary_path", str(bench))
+
+    result = run("Acme Data", careers_url="")
+
+    assert result.tech_stack == ["Python", "Snowflake"]
+    assert result.signals.bench.data.required_stacks == ["data", "python"]
+    assert result.signals.bench.data.gaps == []
+    assert result.signals.bench.data.bench_to_brief_gate_passed is True
+
+
+def test_write_hiring_signal_brief_emits_public_schema_shape(tmp_path, monkeypatch) -> None:
+    odm = tmp_path / "odm.json"
+    odm.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Acme Data",
+                    "categories": ["analytics", "python", "snowflake"],
+                    "website": "https://acme.example",
+                    "funding_rounds": [
+                        {
+                            "announced_on": "2026-04-01T00:00:00Z",
+                            "investment_type": "series_b",
+                            "money_raised_usd": 14000000,
+                        }
+                    ],
+                }
+            ]
+        )
+    )
+    layoffs_csv = tmp_path / "layoffs.csv"
+    layoffs_csv.write_text("Company,Date,Laid_Off_Count\n")
+    bench = tmp_path / "bench.json"
+    bench.write_text(
+        json.dumps(
+            {
+                "stacks": {
+                    "python": {"available_engineers": 2, "skill_subsets": ["FastAPI"]},
+                    "data": {"available_engineers": 1, "skill_subsets": ["Snowflake", "dbt"]},
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.crunchbase.settings.crunchbase_odm_path", str(odm)
+    )
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.layoffs.settings.layoffs_fyi_path", str(layoffs_csv)
+    )
+    monkeypatch.setattr("agent.enrichment.pipeline.settings.bench_summary_path", str(bench))
+
+    output_path = tmp_path / "hiring_signal_brief.json"
+    write_hiring_signal_brief(
+        company_name="Acme Data",
+        careers_url="https://acme.example/careers",
+        path=str(output_path),
+    )
+
+    payload = json.loads(output_path.read_text())
+    assert payload["prospect_name"] == "Acme Data"
+    assert payload["prospect_domain"] == "acme.example"
+    assert payload["primary_segment_match"] == "segment_1_series_a_b"
+    assert payload["bench_to_brief_match"]["bench_available"] is True
+    assert "generated_at" in payload
+    assert "data_sources_checked" in payload

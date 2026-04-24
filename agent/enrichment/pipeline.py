@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from agent.core.config import settings
 from agent.enrichment import ai_maturity, crunchbase, job_posts, layoffs
-from agent.enrichment.bench_summary import extract_keywords, load
+from agent.enrichment.bench_summary import bench_match, infer_required_stacks, load
 from agent.enrichment.schemas import (
     AiMaturitySignal,
     BenchSignal,
@@ -38,6 +40,102 @@ from agent.enrichment.signal_confidence import (
 from agent.enrichment.signal_confidence import (
     leadership_confidence as score_leadership_confidence,
 )
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _company_domain(cb: dict[str, Any] | None, careers_url: str) -> str:
+    candidates = (
+        (cb or {}).get("domain"),
+        (cb or {}).get("website"),
+        (cb or {}).get("homepage_url"),
+        careers_url,
+    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        parsed = urlparse(str(candidate))
+        if parsed.netloc:
+            return parsed.netloc.lower()
+        value = str(candidate).strip().lower().removeprefix("https://").removeprefix("http://")
+        if "/" in value:
+            value = value.split("/", 1)[0]
+        if value:
+            return value
+    return ""
+
+
+def _segment_confidence(
+    *,
+    icp_segment: int,
+    funding_confidence: float,
+    layoffs_confidence: float,
+    leadership_confidence: float,
+    jobs_confidence: float,
+    ai_confidence: float,
+) -> float:
+    if icp_segment == 1:
+        return funding_confidence
+    if icp_segment == 2:
+        return layoffs_confidence
+    if icp_segment == 3:
+        return leadership_confidence
+    if icp_segment == 4:
+        return max(ai_confidence, jobs_confidence)
+    return max(funding_confidence, layoffs_confidence, leadership_confidence, jobs_confidence) * 0.5
+
+
+def _infer_tech_stack(
+    *,
+    categories: list[str],
+    role_titles: list[str],
+) -> list[str]:
+    aliases = {
+        "python": "Python",
+        "django": "Python",
+        "fastapi": "Python",
+        "flask": "Python",
+        "go": "Go",
+        "golang": "Go",
+        "dbt": "dbt",
+        "snowflake": "Snowflake",
+        "databricks": "Databricks",
+        "airflow": "Airflow",
+        "fivetran": "Fivetran",
+        "quicksight": "QuickSight",
+        "powerbi": "PowerBI",
+        "mlops": "MLOps",
+        "langchain": "LangChain",
+        "langgraph": "LangGraph",
+        "llm": "LLM",
+        "pytorch": "PyTorch",
+        "hugging face": "Hugging Face",
+        "huggingface": "Hugging Face",
+        "aws": "AWS",
+        "gcp": "GCP",
+        "terraform": "Terraform",
+        "kubernetes": "Kubernetes",
+        "docker": "Docker",
+        "react": "React",
+        "next.js": "Next.js",
+        "nextjs": "Next.js",
+        "typescript": "TypeScript",
+        "tailwind": "Tailwind",
+        "node.js": "Node.js",
+        "nestjs": "NestJS",
+        "prisma": "Prisma",
+        "typeorm": "TypeORM",
+        "postgres": "PostgreSQL",
+        "postgresql": "PostgreSQL",
+    }
+    haystack = " ".join([*categories, *role_titles]).lower()
+    inferred: list[str] = []
+    for token, label in aliases.items():
+        if token in haystack and label not in inferred:
+            inferred.append(label)
+    return inferred
 
 
 def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
@@ -86,6 +184,14 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
         icp_segment = 3
     elif ai_score >= 2:
         icp_segment = 4
+    segment_confidence = _segment_confidence(
+        icp_segment=icp_segment,
+        funding_confidence=funding_confidence,
+        layoffs_confidence=layoffs_confidence,
+        leadership_confidence=leadership_confidence,
+        jobs_confidence=jobs_confidence,
+        ai_confidence=ai_confidence,
+    )
 
     mean_inputs = [
         cb_confidence,
@@ -106,21 +212,29 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     )
 
     bench = load(settings.bench_summary_path)
-    bench_keywords = extract_keywords(bench)
     role_titles = jobs.get("role_titles") or []
-    haystack = " ".join(
-        [company_name, " ".join((cb or {}).get("categories", [])), " ".join(role_titles)]
+    categories = (cb or {}).get("categories", []) or []
+    tech_stack = _infer_tech_stack(categories=categories, role_titles=role_titles)
+    required_stacks = infer_required_stacks(
+        bench,
+        tech_stack=tech_stack,
+        role_titles=role_titles,
+        categories=categories,
+        ai_score=ai_score,
     )
-    haystack_lc = haystack.lower()
-    bench_hits = sorted([kw for kw in bench_keywords if kw and kw in haystack_lc])
-    bench_gate_passed = bool(bench_hits)
-    bench_confidence_v, bench_meta = bench_confidence(bench=bench, bench_keywords=bench_keywords)
+    bench_result = bench_match(bench, required_stacks=required_stacks)
+    bench_hits = sorted(required_stacks)
+    bench_gate_passed = bool(required_stacks) and bool(bench_result["bench_available"])
+    bench_confidence_v, bench_meta = bench_confidence(
+        bench=bench, bench_keywords=set(required_stacks)
+    )
+    generated_at = _now_iso()
 
     cb_data = CrunchbaseBriefData(
         uuid=(cb or {}).get("uuid"),
         employee_count=(cb or {}).get("num_employees_enum"),
         country=(cb or {}).get("country_code"),
-        categories=(cb or {}).get("categories", []) or [],
+        categories=categories,
     )
 
     crunchbase_block = CrunchbaseSignal(
@@ -156,17 +270,65 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     )
     bench_block = BenchSignal(
         data=BenchSignalData(
-            keywords=sorted(list(bench_keywords)),
+            keywords=sorted(required_stacks),
             hits=bench_hits,
             bench_to_brief_gate_passed=bench_gate_passed,
+            required_stacks=required_stacks,
+            gaps=list(bench_result["gaps"]),
+            available_counts=dict(bench_result["available_counts"]),
         ),
         confidence=bench_confidence_v,
         confidence_meta=bench_meta,
     )
+    data_sources_checked = [
+        {
+            "source": "crunchbase_odm",
+            "status": "success" if cb else "no_data",
+            "fetched_at": generated_at,
+        },
+        {
+            "source": "layoffs_fyi",
+            "status": "success" if layoff_events else "no_data",
+            "fetched_at": generated_at,
+        },
+        {
+            "source": "leadership_changes",
+            "status": "success" if leader_changes else "no_data",
+            "fetched_at": generated_at,
+        },
+    ]
+    if careers_url:
+        data_sources_checked.append(
+            {
+                "source": "company_careers_page",
+                "status": (
+                    "error"
+                    if jobs.get("error")
+                    else ("success" if jobs.get("open_roles", 0) > 0 else "no_data")
+                ),
+                "error_message": str(jobs.get("error", "")),
+                "fetched_at": generated_at,
+            }
+        )
+    honesty_flags: list[str] = []
+    if jobs_confidence < 0.6:
+        honesty_flags.append("weak_hiring_velocity_signal")
+    if ai_confidence < 0.6:
+        honesty_flags.append("weak_ai_maturity_signal")
+    if funding and layoff_events:
+        honesty_flags.append("conflicting_segment_signals")
+        honesty_flags.append("layoff_overrides_funding")
+    if bench_result["gaps"]:
+        honesty_flags.append("bench_gap_detected")
+    if tech_stack:
+        honesty_flags.append("tech_stack_inferred_not_confirmed")
 
     return HiringSignalBrief(
         company_name=company_name,
+        company_domain=_company_domain(cb, careers_url),
+        generated_at=generated_at,
         icp_segment=icp_segment,
+        segment_confidence=round(segment_confidence, 3),
         overall_confidence=overall_confidence,
         overall_confidence_weighted=overall_weighted,
         signals=EnrichmentSignals(
@@ -178,4 +340,7 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
             ai_maturity=ai_block,
             bench=bench_block,
         ),
+        tech_stack=tech_stack,
+        data_sources_checked=data_sources_checked,
+        honesty_flags=honesty_flags,
     )
