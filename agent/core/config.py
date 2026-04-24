@@ -26,8 +26,9 @@ class Settings(BaseSettings):
     # Cal.com self-hosted. If you expose it through ngrok or Cloudflare Tunnel,
     # use the same public URL here and in calcom/.env for NEXT_PUBLIC_WEBAPP_URL.
     calcom_api_key: str = ""
-    calcom_base_url: str = "http://localhost:3000"
-    calcom_event_type_id: int = 1
+    calcom_base_url: str = "http://localhost:3000/api"
+    calcom_event_type_id: int = 2
+    calcom_username: str = ""
 
     # Langfuse
     langfuse_public_key: str = ""
