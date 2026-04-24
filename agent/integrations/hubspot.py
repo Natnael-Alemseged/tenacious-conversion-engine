@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import shutil
@@ -54,7 +55,14 @@ class HubSpotClient:
     def _run(self, coro: Any) -> Any:
         if self._loop is not None:
             return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=30)
-        return asyncio.run(coro)
+        try:
+            asyncio.get_running_loop()
+            # Already inside a running event loop (e.g. FastAPI). asyncio.run()
+            # would raise, so spin up a thread with its own loop instead.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(asyncio.run, coro).result(timeout=30)
+        except RuntimeError:
+            return asyncio.run(coro)
 
     async def _call_tool(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if self._session is not None:
