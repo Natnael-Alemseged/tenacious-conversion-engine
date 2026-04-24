@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import threading
 from typing import Any
 
+import httpx
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -34,10 +36,14 @@ class HubSpotClient:
         self._thread: threading.Thread | None = None
         self._stop_event: asyncio.Event | None = None
         self._lock = threading.Lock()
+        self._http: httpx.Client | None = None
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     def close(self) -> None:
+        if self._http is not None:
+            self._http.close()
+            self._http = None
         if self._loop is not None and self._stop_event is not None:
             self._loop.call_soon_threadsafe(self._stop_event.set)
             if self._thread is not None:
@@ -55,6 +61,11 @@ class HubSpotClient:
             result = await self._session.call_tool(tool, arguments)
             return self._decode_result(result)
 
+        # Render deployments frequently lack Node/npm toolchains; fall back to direct
+        # HubSpot HTTP calls in that case so webhooks don't 500.
+        if shutil.which("npx") is None:
+            return self._call_tool_http(tool, arguments)
+
         env = {**os.environ, "PRIVATE_APP_ACCESS_TOKEN": self._access_token}
         server_params = StdioServerParameters(
             command="npx",
@@ -66,6 +77,65 @@ class HubSpotClient:
                 await session.initialize()
                 result = await session.call_tool(tool, arguments)
                 return self._decode_result(result)
+
+    def _http_client(self) -> httpx.Client:
+        if self._http is None:
+            self._http = httpx.Client(
+                base_url=settings.hubspot_base_url.rstrip("/"),
+                headers={"Authorization": f"Bearer {self._access_token}"},
+                timeout=20.0,
+            )
+        return self._http
+
+    def _call_tool_http(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        Minimal direct-HTTP implementation for the MCP tools we use.
+        This keeps the rest of the app working when MCP stdio transport isn't available.
+        """
+        client = self._http_client()
+
+        if tool == "hubspot-search-objects":
+            object_type = arguments.get("objectType")
+            if object_type != "contacts":
+                raise HubSpotMcpError(
+                    f"HTTP fallback only supports contacts search (got {object_type})."
+                )
+            r = client.post("/crm/v3/objects/contacts/search", json=arguments)
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise HubSpotMcpError(str(exc), error_kind="http_status") from exc
+            return r.json()
+
+        if tool == "hubspot-batch-create-objects":
+            object_type = arguments.get("objectType")
+            if object_type != "contacts":
+                raise HubSpotMcpError(
+                    f"HTTP fallback only supports contacts create (got {object_type})."
+                )
+            r = client.post("/crm/v3/objects/contacts/batch/create", json=arguments)
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise HubSpotMcpError(str(exc), error_kind="http_status") from exc
+            return r.json()
+
+        if tool == "hubspot-batch-update-objects":
+            object_type = arguments.get("objectType")
+            if object_type != "contacts":
+                raise HubSpotMcpError(
+                    f"HTTP fallback only supports contacts update (got {object_type})."
+                )
+            r = client.post("/crm/v3/objects/contacts/batch/update", json=arguments)
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise HubSpotMcpError(str(exc), error_kind="http_status") from exc
+            return r.json()
+
+        raise HubSpotMcpError(
+            f"HTTP fallback does not implement tool={tool}.", error_kind="unsupported_tool"
+        )
 
     def _decode_result(self, result: Any) -> dict[str, Any]:
         texts: list[str] = []
