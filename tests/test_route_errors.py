@@ -34,6 +34,20 @@ class FailingWebhookOrchestrator:
         raise httpx.ConnectError("connection refused")
 
 
+class CapturingWebhookOrchestrator:
+    def __init__(self) -> None:
+        self.email_events = []
+        self.resend = object()
+
+    def handle_email(self, event) -> dict:
+        self.email_events.append(event)
+        return {"identifier": event.from_email}
+
+    def handle_email_bounce(self, event) -> dict:
+        self.email_events.append(event)
+        return {"identifier": event.from_email}
+
+
 def test_bookings_route_returns_502_when_booking_ok_but_crm_writeback_fails(monkeypatch) -> None:
     monkeypatch.setattr(bookings, "orchestrator", BookingOkCrmWritebackFailsOrchestrator())
     client = TestClient(app)
@@ -91,14 +105,80 @@ def test_bookings_route_returns_400_on_missing_booking_uid(monkeypatch) -> None:
 
 def test_email_webhook_returns_503_on_unreachable_upstream(monkeypatch) -> None:
     monkeypatch.setattr(webhooks, "orchestrator", FailingWebhookOrchestrator())
+    monkeypatch.setattr(webhooks.settings, "resend_webhook_signing_secret", "")
     client = TestClient(app)
 
     response = client.post(
         "/webhooks/email",
-        json={"from_email": "lead@example.com"},
+        json={"event_type": "email.replied", "from_email": "lead@example.com"},
     )
 
     assert response.status_code == 503
+
+
+def test_email_webhook_accepts_raw_resend_received_payload(monkeypatch) -> None:
+    orchestrator = CapturingWebhookOrchestrator()
+    monkeypatch.setattr(webhooks, "orchestrator", orchestrator)
+
+    class FakeResendClient:
+        def get_received_email(self, email_id: str) -> dict:
+            assert email_id == "re_123"
+            return {
+                "id": email_id,
+                "from": "Lead <lead@example.com>",
+                "to": ["anything@talauminai.resend.app"],
+                "subject": "Re: hello world",
+                "text": "Interested",
+                "message_id": "<msg-123>",
+            }
+
+    monkeypatch.setattr(orchestrator, "resend", FakeResendClient())
+    monkeypatch.setattr(webhooks.settings, "resend_webhook_signing_secret", "")
+    client = TestClient(app)
+
+    response = client.post(
+        "/webhooks/email",
+        json={
+            "type": "email.received",
+            "created_at": "2026-04-24T12:00:00Z",
+            "data": {
+                "email_id": "re_123",
+                "from": "Lead <lead@example.com>",
+                "to": ["anything@talauminai.resend.app"],
+                "subject": "Re: hello world",
+                "message_id": "<msg-123>",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert orchestrator.email_events
+    assert orchestrator.email_events[0].event_type == "email.replied"
+    assert orchestrator.email_events[0].body == "Interested"
+
+
+def test_email_webhook_ignores_non_actionable_resend_events(monkeypatch) -> None:
+    monkeypatch.setattr(webhooks.settings, "resend_webhook_signing_secret", "")
+    monkeypatch.setattr(webhooks, "orchestrator", CapturingWebhookOrchestrator())
+    client = TestClient(app)
+
+    response = client.post(
+        "/webhooks/email",
+        json={
+            "type": "email.sent",
+            "created_at": "2026-04-24T12:00:00Z",
+            "data": {
+                "email_id": "em_123",
+                "from": "Acme <onboarding@resend.dev>",
+                "to": ["natnaela@10academy.org"],
+                "subject": "hello world",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ignored", "event_type": "email.sent"}
 
 
 def test_sms_webhook_returns_503_on_unreachable_upstream(tmp_path, monkeypatch) -> None:

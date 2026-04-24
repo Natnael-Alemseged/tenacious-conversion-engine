@@ -1,7 +1,9 @@
 import logging
+from email.utils import parseaddr
 from typing import Any
 
 import httpx
+import resend
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
@@ -19,6 +21,7 @@ STOP_KEYWORDS = {"STOP", "UNSUB", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}
 HELP_KEYWORDS = {"HELP"}
 
 BOUNCE_EVENT_TYPES = {"email.bounced", "email.complained", "email.delivery_delayed"}
+IGNORED_EMAIL_EVENT_TYPES = {"email.sent", "email.delivered", "email.opened", "email.clicked"}
 
 
 def _suppression_store() -> SmsSuppressionStore:
@@ -59,6 +62,95 @@ def _route_error(exc: Exception) -> HTTPException:
             detail=f"Upstream integration is unreachable: {exc}",
         )
     return HTTPException(status_code=500, detail=str(exc))
+
+
+def _verify_resend_webhook(payload: str, request: Request) -> None:
+    if not settings.resend_webhook_signing_secret:
+        return
+    try:
+        resend.Webhooks.verify(
+            {
+                "payload": payload,
+                "webhook_secret": settings.resend_webhook_signing_secret,
+                "headers": {
+                    "id": request.headers.get("svix-id", ""),
+                    "timestamp": request.headers.get("svix-timestamp", ""),
+                    "signature": request.headers.get("svix-signature", ""),
+                },
+            }
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid Resend webhook signature: {exc}",
+        ) from exc
+
+
+def _parse_email_address(raw: str) -> str:
+    _, email = parseaddr(raw)
+    return email or raw
+
+
+def _normalize_resend_event(raw: dict[str, Any]) -> InboundEmailEvent:
+    event_type = str(raw.get("type") or "")
+    data = raw.get("data")
+    if not event_type or not isinstance(data, dict):
+        raise ValueError("Unsupported Resend webhook payload: expected top-level type and data.")
+
+    from_email = _parse_email_address(str(data.get("from") or ""))
+    to_field = data.get("to") or []
+    to_value = (
+        ",".join(str(item) for item in to_field) if isinstance(to_field, list) else str(to_field)
+    )
+    subject = str(data.get("subject") or "")
+    message_id = str(data.get("message_id") or data.get("email_id") or "")
+    received_at = data.get("created_at") or raw.get("created_at")
+    body = ""
+
+    if event_type == "email.received":
+        email_id = str(data.get("email_id") or "")
+        if not email_id:
+            raise ValueError("Resend email.received event is missing data.email_id.")
+        received = orchestrator.resend.get_received_email(email_id)
+        body = str(received.get("text") or received.get("html") or "")
+        message_id = str(received.get("message_id") or message_id)
+        subject = str(received.get("subject") or subject)
+        to_received = received.get("to")
+        if isinstance(to_received, list):
+            to_value = ",".join(str(item) for item in to_received)
+        elif to_received:
+            to_value = str(to_received)
+        from_email = _parse_email_address(str(received.get("from") or from_email))
+
+    return InboundEmailEvent(
+        event_type="email.replied" if event_type == "email.received" else event_type,
+        from_email=from_email,
+        to=to_value,
+        subject=subject,
+        body=body,
+        message_id=message_id,
+        in_reply_to=str(data.get("in_reply_to") or ""),
+        bounce_type=str(data.get("bounce_type") or ""),
+        received_at=received_at,
+    )
+
+
+async def _parse_email_event(request: Request) -> tuple[str, InboundEmailEvent | None]:
+    payload = await request.body()
+    text = payload.decode("utf-8")
+    _verify_resend_webhook(text, request)
+    raw = await request.json()
+
+    if "event_type" in raw and "from_email" in raw:
+        return str(raw.get("event_type") or "email.replied"), InboundEmailEvent.model_validate(raw)
+
+    if "type" in raw and "data" in raw:
+        event_type = str(raw.get("type") or "")
+        if event_type in IGNORED_EMAIL_EVENT_TYPES:
+            return event_type, None
+        return event_type, _normalize_resend_event(raw)
+
+    raise ValueError("Unsupported email webhook payload format.")
 
 
 def _sms_error_payload(
@@ -176,7 +268,48 @@ def _sms_validation_http_exception(exc: ValidationError) -> HTTPException:
 
 
 @router.post("/email")
-def inbound_email(event: InboundEmailEvent) -> dict[str, str]:
+async def inbound_email(request: Request) -> dict[str, str]:
+    try:
+        event_type, event = await _parse_email_event(request)
+    except HTTPException:
+        raise
+    except ValidationError as exc:
+        _log.error(
+            "webhooks.email",
+            extra=_route_log_extra(
+                route="webhooks.email",
+                outcome="failure",
+                status_code=422,
+                error_type=type(exc).__name__,
+            ),
+            exc_info=exc,
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        status = _route_error(exc).status_code
+        _log.error(
+            "webhooks.email",
+            extra=_route_log_extra(
+                route="webhooks.email",
+                outcome="failure",
+                status_code=status,
+                error_type=type(exc).__name__,
+            ),
+            exc_info=exc,
+        )
+        raise _route_error(exc) from exc
+
+    if event is None:
+        _log.info(
+            "webhooks.email",
+            extra=_route_log_extra(
+                route="webhooks.email",
+                outcome="success",
+                status_code=200,
+            ),
+        )
+        return {"status": "ignored", "event_type": event_type}
+
     if event.event_type in BOUNCE_EVENT_TYPES:
         try:
             orchestrator.handle_email_bounce(event)
