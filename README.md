@@ -177,7 +177,7 @@ Results are appended to `eval/score_log.json` (mean pass@1 + 95% CI) and `eval/t
 
 ## Status
 
-Interim submission candidate: Act I is complete, and the core Act II loop is partially implemented. The repo currently covers email-first outreach, warm-lead SMS, HubSpot write-back, Cal.com booking, hiring-signal enrichment, sink-routing safety, and bench gating.
+Interim submission candidate: Act I is complete, the core Act II loop is partially implemented, Act III is complete, and the Act IV deterministic probe ablation is complete. The repo currently covers email-first outreach, warm-lead SMS, HubSpot write-back, Cal.com booking, hiring-signal enrichment, sink-routing safety, bench gating, the Act III adversarial probe package, and confidence-gated outbound phrasing.
 
 Act II items still deferred:
 
@@ -185,6 +185,19 @@ Act II items still deferred:
 - HubSpot MCP migration (current implementation uses direct HubSpot HTTP APIs)
 - richer bench-summary matching beyond the current keyword gate
 
-Remaining work for final submission: adversarial probe library (Act III), mechanism design (Act IV), and two-page decision memo (Act V).
+Act III deliverables:
+
+- `probes/probe_library.md` — 32 structured adversarial probes across 10 failure categories
+- `probes/failure_taxonomy.md` — measured and estimated failure taxonomy grouped by business cost
+- `probes/target_failure_mode.md` — highest-ROI failure mode selected for Act IV
+- `scripts/run_probes.py` — deterministic probe runner for the measured subset
+
+Act IV deliverables:
+
+- `method.md` — confidence-gated opener mechanism and rationale
+- `ablation_results.json` — deterministic probe ablation results
+- `held_out_traces.jsonl` — probe-ablation trace summary; sealed τ²-Bench held-out remains pending final evaluation
+
+Remaining work for final submission: sealed held-out evaluation/automated-optimization comparison and two-page decision memo (Act V).
 
 See `baseline.md` for the eval summary and `eval/score_log.json` for the full statistical breakdown.

@@ -122,7 +122,7 @@ def probe_P003() -> tuple[int, list[str], list[str]]:
     }
     test_titles = [
         ("Chief Technology Officer", True),
-        ("VP Engineering", False),  # "vp eng" not in "vp engineering" exactly
+        ("VP Engineering", True),  # "vp eng" is a substring of "vp engineering"
         ("VP of Engineering", True),
         ("Head of AI", True),
         ("CTO", True),
@@ -171,19 +171,11 @@ def probe_P004() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P005() -> tuple[int, list[str], list[str]]:
-    """Segment 1 opener is assertive ('clearly in growth mode') regardless of confidence."""
+    """Segment 1 opener should not assert growth mode when confidence is low."""
     from agent.enrichment.ai_maturity import confidence_phrasing
-
-    _openers = {
-        0: "I came across {company} and wanted to reach out.",
-        1: "Congratulations on the recent funding — {company} is clearly in growth mode.",
-        2: "Teams navigating a restructure often find this is the right time to invest in automation.",  # noqa: E501
-        3: "New technical leadership often opens a window to re-evaluate the tooling stack.",
-        4: "{company}'s signals suggest room to accelerate AI adoption.",
-    }
+    from agent.workflows.lead_orchestrator import _segment_opener
 
     triggered, trace_ids, details = 0, [], []
-    # Test with low confidence (3 open roles → confidence should be low)
     test_cases = [
         (1, 0.1),  # Segment 1, very low confidence
         (1, 0.3),  # Segment 1, low confidence
@@ -193,9 +185,15 @@ def probe_P005() -> tuple[int, list[str], list[str]]:
         for _ in range(3):
             tid = _trace_id()
             phrasing = confidence_phrasing(conf)
-            opener = _openers[seg]
-            # The opener is NOT gated by phrasing — always assertive
-            is_assertive = "clearly in growth mode" in opener
+            opener = _segment_opener("Acme", seg, phrasing)
+            is_assertive = any(
+                phrase in opener.lower()
+                for phrase in (
+                    "clearly in growth mode",
+                    "congratulations",
+                    "is in growth mode",
+                )
+            )
             if phrasing in ("hedged", "exploratory") and is_assertive:
                 triggered += 1
                 details.append(
@@ -517,20 +515,36 @@ def probe_P028() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P031() -> tuple[int, list[str], list[str]]:
-    """competitor_gap_brief generation code does not exist."""
+    """Competitor gap brief uses the bundled sample benchmark, not live peer data."""
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
         competitor_gap_py = ROOT / "agent" / "enrichment" / "competitor_gap.py"
         if competitor_gap_py.exists():
-            # Check whether it actually generates a brief or is a stub
             content = competitor_gap_py.read_text()
-            has_implementation = (
-                "def " in content and "competitor" in content.lower() and len(content.strip()) > 200
+            uses_bundled_sample = (
+                "_load_sample_benchmark" in content
+                and "sample_competitor_gap_brief.json" in content
+                and "benchmark_source" in content
+                and "bundled_sample_competitor_gap_brief" in content
             )
-            if not has_implementation:
+            has_live_peer_research = any(
+                token in content
+                for token in (
+                    "similarweb",
+                    "sector_peers",
+                    "live_peer",
+                    "peer_search",
+                    "find_competitors",
+                    "score_peer",
+                )
+            )
+            if uses_bundled_sample and not has_live_peer_research:
                 triggered += 1
-                details.append(f"{competitor_gap_py.name} exists but appears to be a stub")
+                details.append(
+                    "competitor_gap.py generates briefs from bundled sample benchmark "
+                    "without live sector-peer research"
+                )
         else:
             triggered += 1
             details.append("competitor_gap.py does not exist")
@@ -572,7 +586,11 @@ PROBES: list[tuple[str, str, str]] = [
     ("P-002", "icp_misclassification", "Segment 4 gate at AI readiness 1"),
     ("P-003", "icp_misclassification", "Leadership title normaliser coverage"),
     ("P-004", "icp_misclassification", "Zero open roles passes Segment 1"),
-    ("P-005", "signal_overclaiming", "Assertive opener regardless of confidence"),
+    (
+        "P-005",
+        "signal_overclaiming",
+        "Low-confidence Segment 1 opener avoids assertive growth claim",
+    ),
     ("P-006", "signal_overclaiming", "Single weak signal → exploratory phrasing"),
     ("P-007", "signal_overclaiming", "Stale funding excluded from recent_funding()"),
     ("P-008", "signal_overclaiming", "Empty signals → score=0"),
@@ -586,7 +604,7 @@ PROBES: list[tuple[str, str, str]] = [
     ("P-024", "dual_control_coordination", "SMS guard for email-only prospects"),
     ("P-027", "signal_reliability", "Layoff null percentage computation"),
     ("P-028", "signal_reliability", "GitHub forks inflate AI maturity score"),
-    ("P-031", "gap_overclaiming", "competitor_gap_brief generation exists"),
+    ("P-031", "gap_overclaiming", "Competitor gap brief uses bundled sample benchmark"),
 ]
 
 PROBE_FNS = {

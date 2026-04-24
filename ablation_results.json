@@ -1,0 +1,87 @@
+{
+  "act": "IV",
+  "method": "signal-confidence-gated opener calibration",
+  "evaluation_date": "2026-04-24",
+  "evaluation_scope": "deterministic Act III probe ablation; sealed tau2-bench held-out not run",
+  "primary_target": {
+    "failure_mode": "signal_overclaiming",
+    "probe_id": "P-005",
+    "metric": "failure_avoidance_rate"
+  },
+  "variants": [
+    {
+      "name": "day1_static_opener_baseline",
+      "description": "Static segment opener; confidence only affects the signal summary line.",
+      "probe_id": "P-005",
+      "failures": 9,
+      "trials": 9,
+      "failure_rate": 1.0,
+      "pass_at_1": 0.0,
+      "cost_per_task_usd": 0.0,
+      "p95_latency_ms": 0,
+      "notes": "Baseline measured by Act III probe before mechanism."
+    },
+    {
+      "name": "confidence_gated_opener_method",
+      "description": "Segment opener changes from direct to hedged/exploratory based on confidence_phrasing().",
+      "probe_id": "P-005",
+      "failures": 0,
+      "trials": 9,
+      "failure_rate": 0.0,
+      "pass_at_1": 1.0,
+      "cost_per_task_usd": 0.0,
+      "p95_latency_ms": 0,
+      "notes": "Measured by scripts/run_probes.py after mechanism."
+    },
+    {
+      "name": "generic_low_confidence_fallback",
+      "description": "Design variant: use only the generic Segment 0 opener below confidence 0.5.",
+      "probe_id": "P-005",
+      "failures": 0,
+      "trials": 9,
+      "failure_rate": 0.0,
+      "pass_at_1": 1.0,
+      "cost_per_task_usd": 0.0,
+      "p95_latency_ms": 0,
+      "notes": "Analytical ablation; safer but discards useful segment context."
+    },
+    {
+      "name": "automated_optimization_baseline",
+      "description": "GEPA/AutoAgent-style optimization baseline.",
+      "probe_id": null,
+      "failures": null,
+      "trials": null,
+      "failure_rate": null,
+      "pass_at_1": null,
+      "cost_per_task_usd": null,
+      "p95_latency_ms": null,
+      "notes": "Not run in this local pass; pending sealed final evaluation."
+    }
+  ],
+  "delta_a": {
+    "metric": "P-005 pass_at_1",
+    "baseline": 0.0,
+    "method": 1.0,
+    "delta": 1.0,
+    "test": "Fisher exact test, one-sided, baseline 0/9 pass vs method 9/9 pass",
+    "p_value_approx": 0.00002,
+    "significant_at_p_0_05": true
+  },
+  "category_after_method": {
+    "signal_overclaiming_failures": 0,
+    "signal_overclaiming_trials": 39,
+    "signal_overclaiming_failure_rate": 0.0,
+    "overall_deterministic_failures": 91,
+    "overall_deterministic_trials": 182,
+    "overall_deterministic_failure_rate": 0.5
+  },
+  "sealed_held_out_status": {
+    "run": false,
+    "reason": "Repository guidance says not to run the sealed test split until final evaluation.",
+    "required_future_artifacts": [
+      "sealed tau2-bench held-out traces",
+      "automated-optimization baseline comparison",
+      "Delta B and Delta C reporting"
+    ]
+  }
+}

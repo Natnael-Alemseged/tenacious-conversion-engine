@@ -312,9 +312,26 @@ def test_send_outbound_email_segment1_direct_phrasing(monkeypatch) -> None:
         confidence=0.9,
     )
     assert result["subject"] == "Acme: scaling after your recent raise"
+    assert "clearly in growth mode" in result["html"]
     assert "Based on" not in result["html"]
     assert "early indicators" not in result["html"]
     assert "Series B announced last month." in result["html"]
+
+
+def test_send_outbound_email_segment1_exploratory_opener_low_confidence(monkeypatch) -> None:
+    orch, _, _ = _make_orchestrator(monkeypatch)
+    result = orch.send_outbound_email(
+        to_email="lead@acme.com",
+        company_name="Acme",
+        signal_summary="A small recent funding signal appeared in public data.",
+        icp_segment=1,
+        confidence=0.2,
+    )
+    assert "clearly in growth mode" not in result["html"]
+    assert "Congratulations" not in result["html"]
+    assert "I do not want to over-read it" in result["html"]
+    assert "Is scaling engineering capacity actually a current priority?" in result["html"]
+    assert "early indicators" in result["html"]
 
 
 def test_send_outbound_email_segment2_hedged_phrasing(monkeypatch) -> None:

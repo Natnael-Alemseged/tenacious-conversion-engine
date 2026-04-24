@@ -28,6 +28,63 @@ def _email_domain(email: str) -> str:
     return email.rsplit("@", 1)[-1].lower()[:255]
 
 
+def _segment_opener(company_name: str, segment: int, phrasing: str) -> str:
+    """Return confidence-calibrated opener copy for outbound email."""
+    direct_openers: dict[int, str] = {
+        0: f"I came across {company_name} and wanted to reach out.",
+        1: f"Congratulations on the recent funding — {company_name} is clearly in growth mode.",
+        2: (
+            "Teams navigating a restructure often find this is the right time "
+            "to invest in automation."
+        ),
+        3: "New technical leadership often opens a window to re-evaluate the tooling stack.",
+        4: f"I noticed {company_name}'s signals suggest room to accelerate AI adoption.",
+    }
+    hedged_openers: dict[int, str] = {
+        0: f"I came across {company_name} and wanted to reach out.",
+        1: (
+            f"The recent funding signal suggests {company_name} may be evaluating how to "
+            "scale engineering capacity."
+        ),
+        2: (
+            "When a team is navigating restructuring signals, automation can be worth "
+            "a careful look."
+        ),
+        3: (
+            "A technical leadership change can be a useful moment to review tooling "
+            "and delivery priorities."
+        ),
+        4: (
+            f"Some public signals suggest {company_name} may be exploring where AI "
+            "capability should mature next."
+        ),
+    }
+    exploratory_openers: dict[int, str] = {
+        0: f"I came across {company_name} and wanted to reach out.",
+        1: (
+            f"I saw a recent funding signal for {company_name}, but I do not want to "
+            "over-read it. Is scaling engineering capacity actually a current priority?"
+        ),
+        2: (
+            "I saw a restructuring signal, but I do not want to assume the operating "
+            "context. Is automation part of the current cost or capacity conversation?"
+        ),
+        3: (
+            "I saw a technical leadership signal, but I do not want to infer too much "
+            "from it. Is the tooling stack under review right now?"
+        ),
+        4: (
+            f"I saw a few AI-adjacent signals for {company_name}, but they may be early. "
+            "Is AI delivery capacity something your team is actively evaluating?"
+        ),
+    }
+    if phrasing == "direct":
+        return direct_openers.get(segment, direct_openers[0])
+    if phrasing == "hedged":
+        return hedged_openers.get(segment, hedged_openers[0])
+    return exploratory_openers.get(segment, exploratory_openers[0])
+
+
 def _outbound_email_log_extra(
     *,
     outcome: str,
@@ -356,16 +413,10 @@ class LeadOrchestrator:
             3: f"{company_name}: working with new technical leadership",
             4: f"{company_name}: closing the AI capability gap",
         }
-        _openers: dict[int, str] = {
-            0: f"I came across {company_name} and wanted to reach out.",
-            1: f"Congratulations on the recent funding — {company_name} is clearly in growth mode.",
-            2: "Teams navigating a restructure often find this is the right time to invest in automation.",  # noqa: E501
-            3: "New technical leadership often opens a window to re-evaluate the tooling stack.",
-            4: f"I noticed {company_name}'s signals suggest room to accelerate AI adoption.",
-        }
         seg = icp_segment if icp_segment in _subjects else 0
         subject = _subjects[seg]
-        opener = _openers[seg]
+        phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
+        opener = _segment_opener(company_name, seg, phrasing)
 
         try:
             _require_bench_gate(
@@ -400,7 +451,6 @@ class LeadOrchestrator:
             )
             raise
 
-        phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
         if phrasing == "direct":
             signal_line = signal_summary
         elif phrasing == "hedged":

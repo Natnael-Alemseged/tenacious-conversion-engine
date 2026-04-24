@@ -20,18 +20,18 @@
       "assigned segment=1, expected=2"
     ],
     "trace_ids": [
-      "probe-8dc44eb36d33",
-      "probe-bde8ece3a8ff",
-      "probe-52e722217eda",
-      "probe-058ed0079e78",
-      "probe-66cc3f1ff0a9",
-      "probe-f5e0871ee4dc",
-      "probe-4dd89aa2dfd5",
-      "probe-a0fde03e7273",
-      "probe-4dc4a10f44a5",
-      "probe-39221e09572a"
+      "probe-391f609c26d5",
+      "probe-4d01f0b6d73b",
+      "probe-66f603a51141",
+      "probe-884b48e688e4",
+      "probe-4f7c3b8cb18e",
+      "probe-42651239422f",
+      "probe-55c1c0aeeab2",
+      "probe-8c45db0d42e4",
+      "probe-90905ecaa14e",
+      "probe-91bc2c4aa1ff"
     ],
-    "run_at": "2026-04-24T14:43:35.526778+00:00"
+    "run_at": "2026-04-24T19:02:45.948180+00:00"
   },
   {
     "probe_id": "P-002",
@@ -43,40 +43,38 @@
     "trigger_rate_display": "0/10",
     "details": [],
     "trace_ids": [
-      "probe-9b2d95175630",
-      "probe-23bec0f6ee65",
-      "probe-72e0c756bcec",
-      "probe-53a6f03b8825",
-      "probe-e0a478dd5d39",
-      "probe-732d17ef9447",
-      "probe-aa9f1cc6ce02",
-      "probe-f32b88517e41",
-      "probe-bc869898ecb1",
-      "probe-c232b2c17aa2"
+      "probe-5ad22e8340b9",
+      "probe-7387622f1e92",
+      "probe-eb8c758b3b0c",
+      "probe-5e8e5be60e95",
+      "probe-f38f940ed27a",
+      "probe-f952afa61ead",
+      "probe-30836b8bbaa7",
+      "probe-7f4883213fc1",
+      "probe-1bf8973df893",
+      "probe-4b185b39cc5c"
     ],
-    "run_at": "2026-04-24T14:43:35.526806+00:00"
+    "run_at": "2026-04-24T19:02:45.948212+00:00"
   },
   {
     "probe_id": "P-003",
     "category": "icp_misclassification",
     "description": "Leadership title normaliser coverage",
-    "triggered_count": 1,
+    "triggered_count": 0,
     "total_trials": 7,
-    "trigger_rate": 0.143,
-    "trigger_rate_display": "1/7",
-    "details": [
-      "title='VP Engineering' match=True, expected=False"
-    ],
+    "trigger_rate": 0.0,
+    "trigger_rate_display": "0/7",
+    "details": [],
     "trace_ids": [
-      "probe-46d77aaa046e",
-      "probe-68da5d4a8047",
-      "probe-b6449f1ac910",
-      "probe-13e4c62d8691",
-      "probe-779feb9c1592",
-      "probe-51bd72f0f88b",
-      "probe-ce242d3ca69c"
+      "probe-5b4e119b859a",
+      "probe-a538acd1f5c9",
+      "probe-8923bf0cc8d5",
+      "probe-0a8bb830a7e8",
+      "probe-b1a3863d90d7",
+      "probe-668906f918f4",
+      "probe-c7cdf8d4ee34"
     ],
-    "run_at": "2026-04-24T14:43:35.526835+00:00"
+    "run_at": "2026-04-24T19:02:45.948270+00:00"
   },
   {
     "probe_id": "P-004",
@@ -99,50 +97,40 @@
       "Segment 1 assigned with open_roles=0 (threshold: 5)"
     ],
     "trace_ids": [
-      "probe-19f0af95e3e2",
-      "probe-8cb3f98f5589",
-      "probe-46a5832d38fa",
-      "probe-95b088e20511",
-      "probe-2e18d5398f86",
-      "probe-1561b34f6390",
-      "probe-1c6f6995bb63",
-      "probe-b09d190a10e3",
-      "probe-183bdbe3ec86",
-      "probe-39809f0b9982"
+      "probe-be2f256e5112",
+      "probe-db4c6f09c93e",
+      "probe-0d55225c7c0e",
+      "probe-f8cc1539c9ea",
+      "probe-9624954f9f22",
+      "probe-ad26baf65804",
+      "probe-921d06fd092a",
+      "probe-b1e8cbb7e49e",
+      "probe-6fb8c195bc92",
+      "probe-244baf8e5e58"
     ],
-    "run_at": "2026-04-24T14:43:35.526860+00:00"
+    "run_at": "2026-04-24T19:02:45.948296+00:00"
   },
   {
     "probe_id": "P-005",
     "category": "signal_overclaiming",
-    "description": "Assertive opener regardless of confidence",
-    "triggered_count": 9,
+    "description": "Low-confidence Segment 1 opener avoids assertive growth claim",
+    "triggered_count": 0,
     "total_trials": 9,
-    "trigger_rate": 1.0,
-    "trigger_rate_display": "9/9",
-    "details": [
-      "seg=1 conf=0.1 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.1 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.1 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.3 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.3 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.3 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.45 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.45 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'",
-      "seg=1 conf=0.45 phrasing='exploratory' but opener is assertive: 'Congratulations on the recent funding \u2014 {company} is clearly in growth mode.'"
-    ],
+    "trigger_rate": 0.0,
+    "trigger_rate_display": "0/9",
+    "details": [],
     "trace_ids": [
-      "probe-b3388b3c3582",
-      "probe-a9b6ee255602",
-      "probe-c75fd153a3a8",
-      "probe-de53e977f6e4",
-      "probe-430cb82a21ec",
-      "probe-59e3d410bb4d",
-      "probe-1a3c75a37a97",
-      "probe-d0352e751055",
-      "probe-b7100532eb4f"
+      "probe-4231214002ec",
+      "probe-fb0cbc0c2fa8",
+      "probe-32cacd78ba61",
+      "probe-916ef90ec805",
+      "probe-e5135eb2536a",
+      "probe-8e02fbb4066a",
+      "probe-5ae019825fbe",
+      "probe-d1c3cf70e186",
+      "probe-c2a2899009de"
     ],
-    "run_at": "2026-04-24T14:43:35.526896+00:00"
+    "run_at": "2026-04-24T19:02:46.187705+00:00"
   },
   {
     "probe_id": "P-006",
@@ -154,18 +142,18 @@
     "trigger_rate_display": "0/10",
     "details": [],
     "trace_ids": [
-      "probe-da2612b9fa29",
-      "probe-8deb63ca0b26",
-      "probe-9836d94a435b",
-      "probe-cce268243305",
-      "probe-6cca3cd23e1f",
-      "probe-c44a3b9ecba1",
-      "probe-ad6168f2a3f1",
-      "probe-93e78f526b46",
-      "probe-ee62115c153c",
-      "probe-3c00157b0563"
+      "probe-04b131dd6358",
+      "probe-431f027d0f8b",
+      "probe-9c4c64ff862f",
+      "probe-a5511ceba97a",
+      "probe-74091beb1ba6",
+      "probe-a71bc4c288a0",
+      "probe-2caa23d6fb24",
+      "probe-f9c063f43569",
+      "probe-efb9d81217af",
+      "probe-a201d7df357c"
     ],
-    "run_at": "2026-04-24T14:43:35.526933+00:00"
+    "run_at": "2026-04-24T19:02:46.187754+00:00"
   },
   {
     "probe_id": "P-007",
@@ -177,18 +165,18 @@
     "trigger_rate_display": "0/10",
     "details": [],
     "trace_ids": [
-      "probe-0585d781165f",
-      "probe-71329a631f76",
-      "probe-edc441eaa2c8",
-      "probe-13dbd3a03d64",
-      "probe-4942654faa12",
-      "probe-0e37086e7c6a",
-      "probe-bcbdfc2023cf",
-      "probe-18c56e184a3e",
-      "probe-6fa50c9756a1",
-      "probe-1becfb43bc81"
+      "probe-192e9fe48e45",
+      "probe-3352e3c88089",
+      "probe-bb97e7ea7f38",
+      "probe-c398fd0b0de8",
+      "probe-7d2b7fc5f58e",
+      "probe-44016e2094f4",
+      "probe-9f232b2b2da2",
+      "probe-5a297718d3cb",
+      "probe-4026f7ba23f0",
+      "probe-f9895126da5e"
     ],
-    "run_at": "2026-04-24T14:43:35.527815+00:00"
+    "run_at": "2026-04-24T19:02:46.192118+00:00"
   },
   {
     "probe_id": "P-008",
@@ -200,18 +188,18 @@
     "trigger_rate_display": "0/10",
     "details": [],
     "trace_ids": [
-      "probe-575205de3e88",
-      "probe-f485fc11f1f6",
-      "probe-fa8bf25e72be",
-      "probe-55e51f631cec",
-      "probe-609a6f98b209",
-      "probe-db118d98fac2",
-      "probe-7615351e8d8b",
-      "probe-ad9676f589bf",
-      "probe-6103fd130daa",
-      "probe-311a534a9564"
+      "probe-3d2724f01142",
+      "probe-4af0ecb6b23b",
+      "probe-da503590cc43",
+      "probe-4f8f42e2855b",
+      "probe-a486c5dc7dfd",
+      "probe-f85aeff33da4",
+      "probe-554f6f2027dd",
+      "probe-300fba07a900",
+      "probe-43aceda35ef4",
+      "probe-47becc575756"
     ],
-    "run_at": "2026-04-24T14:43:35.527840+00:00"
+    "run_at": "2026-04-24T19:02:46.192146+00:00"
   },
   {
     "probe_id": "P-009",
@@ -234,18 +222,18 @@
       "go available=3 < requested=10; no reply guard"
     ],
     "trace_ids": [
-      "probe-4087895185a9",
-      "probe-c1a89e56414b",
-      "probe-bebe5469b030",
-      "probe-3dccfa9025d7",
-      "probe-e4bcc1172ce9",
-      "probe-4b53093984e7",
-      "probe-2ee82f109db8",
-      "probe-4704ac79960e",
-      "probe-10b2544ba40d",
-      "probe-e7f3defa7fd6"
+      "probe-03aaa5305136",
+      "probe-f4c33eae449d",
+      "probe-acab49e135b1",
+      "probe-e1b5799045a9",
+      "probe-49ffc0f8eddd",
+      "probe-4eaafcb3a7aa",
+      "probe-f15e3f51f322",
+      "probe-cb9732798a84",
+      "probe-1f4bc26d0a6d",
+      "probe-39da017c985d"
     ],
-    "run_at": "2026-04-24T14:43:35.528090+00:00"
+    "run_at": "2026-04-24T19:02:46.192235+00:00"
   },
   {
     "probe_id": "P-010",
@@ -268,18 +256,18 @@
       "NestJS shows 2 available but note='Currently committed on the Modo Compass engagement through Q...'"
     ],
     "trace_ids": [
-      "probe-d5299b421fc8",
-      "probe-64cbceb5f3ea",
-      "probe-4f581b19d455",
-      "probe-972e32bc5da1",
-      "probe-db248124c55b",
-      "probe-f615b485e074",
-      "probe-03b433efb110",
-      "probe-1bbd293216b7",
-      "probe-32c265284aa8",
-      "probe-b44daedb96eb"
+      "probe-4c73d05daa58",
+      "probe-72a78f877136",
+      "probe-6ee5b73be6dd",
+      "probe-565957d48ebd",
+      "probe-41e952e58144",
+      "probe-0173c636fe78",
+      "probe-e90ae21dc575",
+      "probe-c9b4df684618",
+      "probe-e0bc99a7de0d",
+      "probe-696eedc797b4"
     ],
-    "run_at": "2026-04-24T14:43:35.528156+00:00"
+    "run_at": "2026-04-24T19:02:46.192296+00:00"
   },
   {
     "probe_id": "P-011",
@@ -302,18 +290,18 @@
       "ML senior available=1 < requested=2"
     ],
     "trace_ids": [
-      "probe-258f1573489a",
-      "probe-ad826a4a3891",
-      "probe-b8367c6e3923",
-      "probe-d8415d97f2cb",
-      "probe-497c351f7b3b",
-      "probe-a4cd88b83e95",
-      "probe-adab96e9906c",
-      "probe-cef007fdd10b",
-      "probe-7d14d4b3acda",
-      "probe-602ffde659c0"
+      "probe-019d85b968dc",
+      "probe-a42f3f71c0ce",
+      "probe-75fc2616fb6a",
+      "probe-e64d6a9e6cca",
+      "probe-89fd0681978c",
+      "probe-3ab1648f1148",
+      "probe-2f51270aae50",
+      "probe-57789237836d",
+      "probe-4bdd832dcf94",
+      "probe-088814505551"
     ],
-    "run_at": "2026-04-24T14:43:35.528212+00:00"
+    "run_at": "2026-04-24T19:02:46.192349+00:00"
   },
   {
     "probe_id": "P-012",
@@ -336,18 +324,18 @@
       "Infra time_to_deploy=14 days > requested=7 days"
     ],
     "trace_ids": [
-      "probe-21a138e1feac",
-      "probe-4eff3e8ad05e",
-      "probe-0e2c365b2e43",
-      "probe-cd4f0257eb2f",
-      "probe-381bf3c3a93e",
-      "probe-9ccf37c14bba",
-      "probe-5ceb6622f640",
-      "probe-ab3db186f287",
-      "probe-64a5fc9be8fd",
-      "probe-23155585c223"
+      "probe-5178001a705e",
+      "probe-f4831d9f77c6",
+      "probe-2a227d79c169",
+      "probe-db36c1dd2fe3",
+      "probe-9dc0474e99da",
+      "probe-a70da5ccc0bf",
+      "probe-f5e92dc97925",
+      "probe-cfa545ebebf5",
+      "probe-b9e75ee696eb",
+      "probe-87f7ef0be12b"
     ],
-    "run_at": "2026-04-24T14:43:35.528265+00:00"
+    "run_at": "2026-04-24T19:02:46.192397+00:00"
   },
   {
     "probe_id": "P-015",
@@ -368,28 +356,28 @@
       "seg=4 company='NovaCure Machine Learning Infrastructure' subject len=71: 'NovaCure Machine Learning Infrastructure: closing the AI capability gap'"
     ],
     "trace_ids": [
-      "probe-ae7c1a3213db",
-      "probe-213581e75680",
-      "probe-b524886c3308",
-      "probe-89879f84693e",
-      "probe-2e7579589e5a",
-      "probe-f7f48b196e47",
-      "probe-477068a3bc53",
-      "probe-235cd559f8c5",
-      "probe-2807e71be687",
-      "probe-dabcfd641be4",
-      "probe-5cafb404982f",
-      "probe-911ae6d67a61",
-      "probe-2b59bce09300",
-      "probe-ac1a5a93d89f",
-      "probe-e3412dd0790a",
-      "probe-7e9a83bc2ba3",
-      "probe-5a972c48ce3d",
-      "probe-b05de3bd1ef8",
-      "probe-8754d55d77da",
-      "probe-e39d426df6f3"
+      "probe-cb8922bf934f",
+      "probe-0e602bb1ea67",
+      "probe-f4e8c80d78bb",
+      "probe-1146615c3930",
+      "probe-0508b281ebba",
+      "probe-d9e80ae58b31",
+      "probe-4e0f7f3ef816",
+      "probe-24905a127faa",
+      "probe-b5b10bb8138e",
+      "probe-ed2f8d38b873",
+      "probe-4c21392849f5",
+      "probe-9e38b181ab44",
+      "probe-9a18af3243f4",
+      "probe-9f1edee65c95",
+      "probe-012dbf524f8f",
+      "probe-073b17766978",
+      "probe-f621783d660b",
+      "probe-ac255d8543e7",
+      "probe-cad14408b350",
+      "probe-f1b701e9dc9f"
     ],
-    "run_at": "2026-04-24T14:43:35.528309+00:00"
+    "run_at": "2026-04-24T19:02:46.192440+00:00"
   },
   {
     "probe_id": "P-016",
@@ -401,14 +389,14 @@
     "trigger_rate_display": "0/6",
     "details": [],
     "trace_ids": [
-      "probe-a03a87d14d67",
-      "probe-b83de3393386",
-      "probe-876c25b4287a",
-      "probe-93bb64cf64cc",
-      "probe-fb03e82e78a9",
-      "probe-4e75a31cc743"
+      "probe-da86dc57f2ec",
+      "probe-c018a9279d18",
+      "probe-dff241d9f04c",
+      "probe-917ae2bf32a5",
+      "probe-ec987e7ef5f4",
+      "probe-c929e796e7f7"
     ],
-    "run_at": "2026-04-24T14:43:35.528343+00:00"
+    "run_at": "2026-04-24T19:02:46.192473+00:00"
   },
   {
     "probe_id": "P-017",
@@ -420,15 +408,15 @@
     "trigger_rate_display": "0/7",
     "details": [],
     "trace_ids": [
-      "probe-e271c6046c39",
-      "probe-463da9435d0b",
-      "probe-d665f11f4b12",
-      "probe-c04bd434a6f0",
-      "probe-ba33c358dca3",
-      "probe-5be95e3824df",
-      "probe-4cb5e4446f9c"
+      "probe-f337bacc2f55",
+      "probe-43f04a5cf208",
+      "probe-c39a49e2f832",
+      "probe-1a98b8749ab4",
+      "probe-e6071ea4ad29",
+      "probe-c43a43b959b8",
+      "probe-bd925bf50d53"
     ],
-    "run_at": "2026-04-24T14:43:35.528360+00:00"
+    "run_at": "2026-04-24T19:02:46.192490+00:00"
   },
   {
     "probe_id": "P-024",
@@ -440,18 +428,18 @@
     "trigger_rate_display": "0/10",
     "details": [],
     "trace_ids": [
-      "probe-c6d68d43f9c0",
-      "probe-4fa9a27a747e",
-      "probe-d45a00f43dc1",
-      "probe-76e72ac9234d",
-      "probe-ffcd65784267",
-      "probe-14595306b823",
-      "probe-cff7bb1b8139",
-      "probe-c6a713092945",
-      "probe-c2cb5ba2c540",
-      "probe-34e3a5eb8a1b"
+      "probe-f87e9416c6d1",
+      "probe-121bc9534ac6",
+      "probe-5e9d703555da",
+      "probe-c20621afc9c5",
+      "probe-75aa1349a251",
+      "probe-fef15e85e254",
+      "probe-5b33b11b5cfa",
+      "probe-70957fab89c3",
+      "probe-d80408d54b6c",
+      "probe-41090f5dd205"
     ],
-    "run_at": "2026-04-24T14:43:35.796482+00:00"
+    "run_at": "2026-04-24T19:02:46.193091+00:00"
   },
   {
     "probe_id": "P-027",
@@ -467,11 +455,11 @@
       "percentage='' is not computed from headcount (laid_off_count=50) \u2014 overclaim risk confirmed"
     ],
     "trace_ids": [
-      "probe-ce2699cfff77",
-      "probe-a7695ae94a60",
-      "probe-d2a3d672f1d2"
+      "probe-6fc83d2714ed",
+      "probe-4a4dfd3aec77",
+      "probe-41adbb1f597a"
     ],
-    "run_at": "2026-04-24T14:43:35.796516+00:00"
+    "run_at": "2026-04-24T19:02:46.193313+00:00"
   },
   {
     "probe_id": "P-028",
@@ -494,40 +482,51 @@
       "github_activity=True (possibly forks) raises score 0\u21921; scorer has no fork/commit distinction"
     ],
     "trace_ids": [
-      "probe-1fedf4a91d6b",
-      "probe-6e6dd4ad61fc",
-      "probe-ccb885a5e2db",
-      "probe-855268278e1f",
-      "probe-268d3af1fca1",
-      "probe-3c75f996f0fa",
-      "probe-9628febd3953",
-      "probe-c772e37e5390",
-      "probe-344c15d13f9b",
-      "probe-221a75be949e"
+      "probe-e62fd072a5c3",
+      "probe-4cdf79038b88",
+      "probe-984b5a9c39bc",
+      "probe-104b666fe25d",
+      "probe-c9490c82afa4",
+      "probe-cdd18e0d432a",
+      "probe-d5d49ab99911",
+      "probe-0d2813068611",
+      "probe-5fbc92510b13",
+      "probe-76bcf4a95d6b"
     ],
-    "run_at": "2026-04-24T14:43:35.796558+00:00"
+    "run_at": "2026-04-24T19:02:46.193352+00:00"
   },
   {
     "probe_id": "P-031",
     "category": "gap_overclaiming",
-    "description": "competitor_gap_brief generation exists",
-    "triggered_count": 0,
+    "description": "Competitor gap brief uses bundled sample benchmark",
+    "triggered_count": 10,
     "total_trials": 10,
-    "trigger_rate": 0.0,
-    "trigger_rate_display": "0/10",
-    "details": [],
-    "trace_ids": [
-      "probe-2a2daa64075d",
-      "probe-46a313bfdec2",
-      "probe-c564a8dd72cf",
-      "probe-854ccb09b383",
-      "probe-7aecd13536eb",
-      "probe-3f5ac9ceafde",
-      "probe-e257ba3d8b4f",
-      "probe-ca6bf18f08c7",
-      "probe-8c8d084b5b32",
-      "probe-6cac13ac060b"
+    "trigger_rate": 1.0,
+    "trigger_rate_display": "10/10",
+    "details": [
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research",
+      "competitor_gap.py generates briefs from bundled sample benchmark without live sector-peer research"
     ],
-    "run_at": "2026-04-24T14:43:35.797119+00:00"
+    "trace_ids": [
+      "probe-16f301cc19c8",
+      "probe-42de1cf649ed",
+      "probe-c53d5bdc2ace",
+      "probe-d24f88dcfd4d",
+      "probe-732e2469d6f3",
+      "probe-8ce51a1f7ae2",
+      "probe-6b9738d76e61",
+      "probe-3b06c5f01465",
+      "probe-c9b59e3bcd65",
+      "probe-6d325fb11902"
+    ],
+    "run_at": "2026-04-24T19:02:46.193746+00:00"
   }
 ]
