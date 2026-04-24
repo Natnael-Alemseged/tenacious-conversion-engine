@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     # HubSpot
     hubspot_api_key: str = ""
+    hubspot_access_token: str = ""
+    hubspot_developer_api_key: str = ""
+    hubspot_personal_access_key: str = ""
     hubspot_base_url: str = "https://api.hubapi.com"
 
     # Cal.com self-hosted. If you expose it through ngrok or Cloudflare Tunnel,
@@ -44,13 +47,25 @@ class Settings(BaseSettings):
     crunchbase_odm_path: str = "./data/crunchbase_odm_sample.json"
     layoffs_fyi_path: str = "./data/layoffs_fyi.csv"
     sms_suppression_path: str = "./data/sms_suppression.json"
-    bench_summary_path: str = "./data/bench_summary.json"
+    bench_summary_path: str = "./tenacious_sales_data/seed/bench_summary.json"
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    def model_post_init(self, __context) -> None:  # type: ignore[override]
+        # Back-compat with challenge docs / local envs that used different names.
+        # HubSpot MCP expects a private app access token; we store whatever the
+        # user provided and let the integration surface auth errors clearly.
+        if not self.hubspot_api_key:
+            # Prefer the explicit private app token env var if present.
+            self.hubspot_api_key = (
+                self.hubspot_access_token
+                or self.hubspot_personal_access_key
+                or self.hubspot_developer_api_key
+            )
 
     @property
     def openrouter_key_pool(self) -> list[str]:
