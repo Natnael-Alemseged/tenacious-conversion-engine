@@ -233,6 +233,32 @@
           "tech_stack_inferred_not_confirmed"
         ]
       }
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Runtime/Pydantic field: legal or operating name (aligns with `HiringSignalBrief` in `agent.enrichment.schemas`)."
+    },
+    "icp_segment": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4,
+      "description": "Runtime/Pydantic ICP segment index; see enrichment pipeline. Legacy `primary_segment_match` is the string form where applicable."
+    },
+    "overall_confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Runtime/Pydantic: mean of per-signal confidences."
+    },
+    "overall_confidence_weighted": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Runtime/Pydantic: weighted blend emphasizing firmographics and job-page evidence."
+    },
+    "signals": {
+      "type": "object",
+      "description": "Runtime/Pydantic: nested `EnrichmentSignals` (crunchbase, funding, layoffs, etc.). Partial parity — structure is defined in code."
     }
   }
 }
