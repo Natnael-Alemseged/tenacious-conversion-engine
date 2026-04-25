@@ -373,7 +373,11 @@ def run_golden_path(
             )
 
         # Outbound send (will route to sink in offline mode).
-        signal_summary = "Offline golden-path signal summary."
+        # Use the same grounded summary logic as the production orchestrator.
+        # (Avoid leaking runner placeholders like "Offline golden-path ...".)
+        from agent.workflows.lead_orchestrator import _signal_summary_from_brief
+
+        signal_summary = _signal_summary_from_brief(brief)
         outbound = orchestrator.send_outbound_email(
             to_email=lead_email,
             company_name=brief.company_name,
@@ -391,8 +395,45 @@ def run_golden_path(
 
         # Simulate inbound reply (linked to outbound thread/message id).
         outbound_message_id = str(outbound.get("id") or "")
-        start = (datetime.now(UTC) + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
-        start_iso = start.isoformat().replace("+00:00", "Z")
+        # Prefer Cal.com slot discovery in live mode, but fall back to a deterministic
+        # weekday slot if /v2/slots is unavailable in the local Cal.com setup.
+        # (Many local Cal.com setups don't have /v2/slots working reliably.)
+        base_start = (datetime.now(UTC) + timedelta(days=2)).replace(
+            minute=0, second=0, microsecond=0
+        )
+        # Move to next weekday and a "business hours" slot (Cal.com schedule is typically
+        # EAT 09-17 → UTC 06-14).
+        while base_start.weekday() >= 5:  # 5=Sat, 6=Sun
+            base_start = base_start + timedelta(days=1)
+        base_start = base_start.replace(hour=10)
+        start_iso = ""
+        if live:
+            try:
+                slots_end = base_start + timedelta(days=7)
+                slots = orchestrator.calcom.get_available_slots(
+                    start=base_start.isoformat().replace("+00:00", "Z"),
+                    end=slots_end.isoformat().replace("+00:00", "Z"),
+                    timezone="UTC",
+                )
+                chosen: str | None = None
+                for day_key in sorted((slots or {}).keys()):
+                    day = slots.get(day_key) if isinstance(slots, dict) else None
+                    if not isinstance(day, dict):
+                        continue
+                    for time_key in sorted(day.keys()):
+                        if day.get(time_key):
+                            chosen = time_key
+                            break
+                    if chosen:
+                        break
+                if chosen:
+                    start_iso = chosen
+            except Exception:
+                start_iso = ""
+        if not start_iso:
+            # Seeded offset reduces chance of rerun collisions.
+            start = base_start + timedelta(minutes=(int(seed) % 6) * 30)
+            start_iso = start.isoformat().replace("+00:00", "Z")
         reply_body = (
             "Thanks — yes, can we book a quick call?\n\n"
             f"{start_iso}\n"
