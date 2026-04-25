@@ -9,7 +9,142 @@ from agent.core.config import settings
 from agent.enrichment.schemas import HiringSignalBrief
 from agent.models.webhooks import InboundEmailEvent
 from agent.workflows.reply_intent import ReplyIntentResult
-from agent.workflows.tenacious_kb import MarkdownSection, load_tenacious_kb
+from agent.workflows.tenacious_kb import MarkdownSection, TenaciousKnowledgeBase, load_tenacious_kb
+
+
+def _inbound_text_lower(event: InboundEmailEvent) -> str:
+    return f"{event.subject or ''}\n{event.body or ''}".lower()
+
+
+def _is_weak_intent(intent: ReplyIntentResult | None) -> bool:
+    if intent is None:
+        return True
+    return intent.confidence < 0.5
+
+
+def _has_pricing_keywords(text: str) -> bool:
+    return any(k in text for k in ("price", "pricing", "rate", "cost", "budget"))
+
+
+def _has_proof_keywords(text: str) -> bool:
+    return any(
+        p in text
+        for p in (
+            "case study",
+            "case studies",
+            "references",
+            "customers",
+            "proof",
+        )
+    )
+
+
+def _has_discovery_keywords(text: str) -> bool:
+    return any(
+        p in text
+        for p in (
+            "process",
+            "timeline",
+            "what happens next",
+            "how does this work",
+        )
+    )
+
+
+def _has_objection_phrase(text: str) -> bool:
+    return any(p in text for p in ("too expensive", "higher than", "cheaper"))
+
+
+def _segment_transcript_section(
+    kb: TenaciousKnowledgeBase, icp_segment: int
+) -> MarkdownSection | None:
+    suffixes = {
+        1: "transcript_01_series_b_startup.md",
+        2: "transcript_02_mid_market_restructure.md",
+        3: "transcript_03_new_cto_transition.md",
+        4: "transcript_04_specialized_capability.md",
+    }
+    need = f"Transcript 0{icp_segment}"
+    name = suffixes.get(icp_segment)
+    if not name:
+        return None
+    return kb.find_first_in_source(
+        source_suffix=f"tenacious_sales_data/seed/discovery_transcripts/{name}",
+        heading_contains=need,
+    )
+
+
+def _collect_intent_grounded_sections(
+    kb: TenaciousKnowledgeBase,
+    *,
+    event: InboundEmailEvent,
+    brief: HiringSignalBrief,
+    intent: ReplyIntentResult | None,
+) -> list[MarkdownSection]:
+    """Extra KB sections from deterministic keyword heuristics (no LLM).
+
+    Heuristics apply when LLM intent is missing or low-confidence.
+    """
+    t = _inbound_text_lower(event)
+    weak = _is_weak_intent(intent)
+    if not weak:
+        return []
+
+    out: list[MarkdownSection] = []
+    seen: set[str] = set()
+
+    def push(sec: MarkdownSection | None) -> None:
+        if sec and sec.ref not in seen:
+            seen.add(sec.ref)
+            out.append(sec)
+
+    if _has_pricing_keywords(t):
+        push(
+            kb.find_first_in_source(
+                source_suffix="tenacious_sales_data/seed/pricing_sheet.md",
+                heading_contains="Talent outsourcing",
+            )
+        )
+        push(
+            kb.find_first_in_source(
+                source_suffix="tenacious_sales_data/seed/pricing_sheet.md",
+                heading_contains="How the agent routes to a human",
+            )
+        )
+        if _has_objection_phrase(t):
+            push(
+                kb.find_first_in_source(
+                    source_suffix=(
+                        "tenacious_sales_data/seed/discovery_transcripts/"
+                        "transcript_05_objection_heavy.md"
+                    ),
+                    heading_contains="Transcript 05",
+                )
+            )
+
+    if _has_proof_keywords(t):
+        push(
+            kb.find_first_in_source(
+                source_suffix="tenacious_sales_data/seed/case_studies.md",
+                heading_contains="Case Study 1",
+            )
+        )
+
+    if _has_discovery_keywords(t):
+        if 1 <= brief.icp_segment <= 4:
+            push(_segment_transcript_section(kb, brief.icp_segment))
+        if _has_objection_phrase(t):
+            push(
+                kb.find_first_in_source(
+                    source_suffix=(
+                        "tenacious_sales_data/seed/discovery_transcripts/"
+                        "transcript_05_objection_heavy.md"
+                    ),
+                    heading_contains="Transcript 05",
+                )
+            )
+
+    return out
 
 
 @dataclass(frozen=True)
@@ -210,6 +345,7 @@ def build_doc_grounded_inbound_reply(
         heading_contains="Inbound Template",
     )
     signature_text, signature_section = _render_signature(kb=kb, first_name=first_name)
+    intent_sections = _collect_intent_grounded_sections(kb, event=event, brief=brief, intent=intent)
     doc_sources_used: list[str] = kb.doc_refs(
         style_tone,
         formatting,
@@ -217,6 +353,7 @@ def build_doc_grounded_inbound_reply(
         warm_curious,
         inbound_template,
         signature_section,
+        *intent_sections,
     )
 
     if booking_result is not None and requested_booking_start:
