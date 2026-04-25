@@ -7,11 +7,21 @@
   "required": [
     "prospect_domain",
     "prospect_sector",
+    "prospect_sub_niche",
     "generated_at",
     "prospect_ai_maturity_score",
     "sector_top_quartile_benchmark",
     "competitors_analyzed",
-    "gap_findings"
+    "gap_findings",
+    "suggested_pitch_shift",
+    "prospect_sector_percentile",
+    "sparse_sector",
+    "benchmark_source",
+    "benchmark_source_path",
+    "gap_quality_self_check",
+    "peer_score_histogram",
+    "rank_among_peers",
+    "prospect_vs_top_quartile_mean_delta"
   ],
   "properties": {
     "prospect_domain": {
@@ -43,7 +53,7 @@
     },
     "competitors_analyzed": {
       "type": "array",
-      "minItems": 5,
+      "minItems": 0,
       "maxItems": 10,
       "description": "Five to ten peer companies scored on the same AI maturity rubric.",
       "items": {
@@ -92,14 +102,15 @@
           },
           "peer_evidence": {
             "type": "array",
-            "minItems": 2,
+            "minItems": 0,
             "items": {
               "type": "object",
-              "required": ["competitor_name", "evidence", "source_url"],
+              "required": ["competitor_name", "evidence", "source_url", "fetched_at"],
               "properties": {
                 "competitor_name": { "type": "string" },
                 "evidence": { "type": "string" },
-                "source_url": { "type": "string", "format": "uri" }
+                "source_url": { "type": "string", "format": "uri" },
+                "fetched_at": { "type": "string", "format": "date-time" }
               }
             }
           },
@@ -144,5 +155,61 @@
         }
       }
     }
+    ,
+    "benchmark_source": {
+      "type": "string",
+      "description": "Where the peer cohort came from.",
+      "enum": [
+        "odm_sector_peers",
+        "sparse_sector_insufficient_peers",
+        "explicit_sample_benchmark"
+      ]
+    },
+    "benchmark_source_path": {
+      "type": "string",
+      "description": "Path or URI for the benchmark source. For 'odm_sector_peers', this is the ODM file path; for 'explicit_sample_benchmark', this points to the provided sample benchmark path."
+    },
+    "prospect_sector_percentile": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Percentile position of the prospect score within the analyzed peer scores. 1.0 means >= all peers."
+    },
+    "peer_score_histogram": {
+      "type": "object",
+      "description": "Counts of analyzed peers by AI maturity score (0–3).",
+      "required": ["score_0", "score_1", "score_2", "score_3"],
+      "properties": {
+        "score_0": { "type": "integer", "minimum": 0 },
+        "score_1": { "type": "integer", "minimum": 0 },
+        "score_2": { "type": "integer", "minimum": 0 },
+        "score_3": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "rank_among_peers": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "0-based rank when peer scores are sorted descending. 0 means best in cohort. If no peers, rank is 0."
+    },
+    "prospect_vs_top_quartile_mean_delta": {
+      "type": "number",
+      "description": "prospect_score - mean(top-quartile peer scores). If no top-quartile peers, delta is 0."
+    }
   }
+  ,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "sparse_sector": { "const": false } },
+        "required": ["sparse_sector"]
+      },
+      "then": {
+        "properties": {
+          "competitors_analyzed": { "minItems": 5 },
+          "gap_findings": { "minItems": 2 }
+        }
+      }
+    }
+  ]
 }

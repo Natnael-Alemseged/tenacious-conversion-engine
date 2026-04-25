@@ -157,6 +157,39 @@ def _percentile(*, score: int, peer_scores: list[int]) -> float:
     return round(leq / len(peer_scores), 3)
 
 
+def _rank_desc(*, score: int, peer_scores: list[int]) -> int:
+    """0-based rank among peers (descending scores). 0 means best. Ties share the best rank."""
+    if not peer_scores:
+        return 0
+    sorted_scores = sorted(peer_scores, reverse=True)
+    try:
+        return int(sorted_scores.index(score))
+    except ValueError:
+        # If score is outside the peer set (shouldn't happen), treat as worst.
+        return max(0, len(sorted_scores) - 1)
+
+
+def _histogram(peer_scores: list[int]) -> dict[str, int]:
+    return {
+        "score_0": sum(1 for s in peer_scores if int(s) == 0),
+        "score_1": sum(1 for s in peer_scores if int(s) == 1),
+        "score_2": sum(1 for s in peer_scores if int(s) == 2),
+        "score_3": sum(1 for s in peer_scores if int(s) == 3),
+    }
+
+
+def _top_quartile_mean(peer_scores: list[int]) -> float:
+    if not peer_scores:
+        return 0.0
+    scores = sorted(int(s) for s in peer_scores)
+    idx = max(0, int(round(0.75 * (len(scores) - 1))))
+    threshold = scores[idx]
+    top = [s for s in scores if s >= threshold]
+    if not top:
+        return 0.0
+    return round(sum(top) / len(top), 3)
+
+
 def _top_quartile_flags(scored: list[dict[str, Any]]) -> None:
     scores = sorted(int(item.get("ai_maturity_score") or 0) for item in scored)
     if not scores:
@@ -186,6 +219,7 @@ def _gap_findings_from_scored(
                         "competitor_name": peer["name"],
                         "evidence": ev.get("snippet", "Named AI leadership signal."),
                         "source_url": ev["source_url"],
+                        "fetched_at": ev.get("fetched_at", brief.generated_at),
                     }
                 )
                 break
@@ -219,6 +253,7 @@ def _gap_findings_from_scored(
                         "competitor_name": peer["name"],
                         "evidence": ev.get("snippet", "Exec commentary signal."),
                         "source_url": ev["source_url"],
+                        "fetched_at": ev.get("fetched_at", brief.generated_at),
                     }
                 )
                 break
@@ -249,6 +284,7 @@ def _gap_findings_from_scored(
                         "source_url": (scored[0].get("sources_checked") or [""])[0]
                         if scored
                         else "",
+                        "fetched_at": brief.generated_at,
                     },
                     {
                         "competitor_name": scored[1]["name"] if len(scored) > 1 else "n/a",
@@ -256,6 +292,7 @@ def _gap_findings_from_scored(
                         "source_url": (scored[1].get("sources_checked") or [""])[0]
                         if len(scored) > 1
                         else "",
+                        "fetched_at": brief.generated_at,
                     },
                 ],
                 "prospect_state": "Sparse competitor evidence set; do not assert a gap as fact.",
@@ -391,7 +428,6 @@ def to_public_competitor_gap_brief(
     benchmark_path: str | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> dict[str, Any]:
-    sample = _load_sample_benchmark(benchmark_path)
     domain = _infer_domain(brief)
     sector, sub_niche = _prospect_sector(brief)
 
@@ -405,17 +441,26 @@ def to_public_competitor_gap_brief(
         max_peers=10,
     )
 
-    # Ensure 5–10 competitors; if sparse, explicitly fall back to sample cohort.
+    # Rubric alignment: never silently substitute an unrelated bundled sample cohort.
+    # If we cannot find 5+ reasonable peers from ODM, we mark sparse_sector and return
+    # an "insufficient evidence" brief rather than padding with unrelated companies.
     benchmark_source = "odm_sector_peers"
+    benchmark_source_path = str(getattr(_crunchbase.settings, "crunchbase_odm_path", ""))
     competitors_raw = live_peers
     sparse_sector = len(competitors_raw) < 5
-    if sparse_sector:
-        benchmark_source = "sparse_sector_fallback_to_sample"
+    if sparse_sector and benchmark_path:
+        # Explicit opt-in: only use a sample benchmark if a path is provided.
+        benchmark_source = "explicit_sample_benchmark"
+        benchmark_source_path = str(benchmark_path)
+        sample = _load_sample_benchmark(benchmark_path)
         competitors_raw = [
             item
             for item in sample.get("competitors_analyzed", [])
             if item.get("domain") != sample.get("prospect_domain")
         ][:10]
+        sparse_sector = False
+    elif sparse_sector:
+        benchmark_source = "sparse_sector_insufficient_peers"
 
     tech_stack = brief.tech_stack
     scored: list[dict[str, Any]] = []
@@ -438,30 +483,11 @@ def to_public_competitor_gap_brief(
         if len(scored) >= 10:
             break
 
-    # If scoring produced too few, pad with sample competitors.
-    if len(scored) < 5:
-        for comp in sample.get("competitors_analyzed", []):
-            raw_domain = str(comp.get("domain") or "")
-            parsed = raw_domain.replace("https://", "").replace("http://", "").split("/", 1)[0]
-            if not parsed:
-                continue
-            scored.append(
-                {
-                    "name": str(comp.get("name") or ""),
-                    "domain": parsed,
-                    "ai_maturity_score": int(comp.get("ai_maturity_score") or 0),
-                    "ai_maturity_justification": list(comp.get("ai_maturity_justification") or [])[
-                        :6
-                    ],
-                    "headcount_band": str(comp.get("headcount_band") or "15_to_80"),
-                    "top_quartile": bool(comp.get("top_quartile") is True),
-                    "sources_checked": list(comp.get("sources_checked") or [])[:8],
-                    "_evidence": [],
-                    "_signals": {},
-                }
-            )
-            if len(scored) >= 5:
-                break
+    # Never pad scored peers with bundled samples implicitly. If we have too few peers,
+    # mark sparse_sector and proceed with a smaller audited cohort.
+    if len(scored) < 5 and benchmark_source == "odm_sector_peers":
+        sparse_sector = True
+        benchmark_source = "sparse_sector_insufficient_peers"
 
     _top_quartile_flags(scored)
     top_quartile_scores = [
@@ -470,18 +496,20 @@ def to_public_competitor_gap_brief(
     benchmark = (
         round(sum(top_quartile_scores) / len(top_quartile_scores), 2)
         if top_quartile_scores
-        else float(sample.get("sector_top_quartile_benchmark", 0))
+        else 0.0
     )
-    gap_findings = (
-        _select_gap_findings(brief, sample)
-        if sparse_sector
-        else _gap_findings_from_scored(brief=brief, scored=scored)
-    )
+
+    # If sparse, still return findings, but they must be framed as low-confidence research prompts.
+    gap_findings = _gap_findings_from_scored(brief=brief, scored=scored)
 
     peer_scores = [int(item.get("ai_maturity_score") or 0) for item in scored]
     prospect_percentile = _percentile(
         score=brief.signals.ai_maturity.score, peer_scores=peer_scores
     )
+    rank = _rank_desc(score=brief.signals.ai_maturity.score, peer_scores=peer_scores)
+    hist = _histogram(peer_scores)
+    tq_mean = _top_quartile_mean(peer_scores)
+    tq_delta = round(float(brief.signals.ai_maturity.score) - float(tq_mean), 3) if tq_mean else 0.0
 
     return {
         "prospect_domain": domain,
@@ -514,5 +542,8 @@ def to_public_competitor_gap_brief(
             ),
         },
         "benchmark_source": benchmark_source,
-        "benchmark_source_path": str(_sample_path() if benchmark_path is None else benchmark_path),
+        "benchmark_source_path": benchmark_source_path,
+        "peer_score_histogram": hist,
+        "rank_among_peers": rank,
+        "prospect_vs_top_quartile_mean_delta": tq_delta,
     }

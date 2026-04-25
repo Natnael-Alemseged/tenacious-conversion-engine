@@ -11,12 +11,12 @@ BT
 72 760 Td (Tenacious Conversion Engine — Act V Memo \(DRAFT\)) Tj
 72 744 Td (Page 1/2 — The Decision) Tj
 72 728 Td () Tj
-72 712 Td (τ² sealed pass@1: {'mean': 0.35, 'ci_95': [0.15, 0.55], 'n': 20}) Tj
+72 712 Td (τ² sealed pass@1: {'mean': 0.45, 'ci_95': [0.25, 0.65], 'n': 20}) Tj
 72 696 Td (Auto-opt sealed pass@1: 0.4) Tj
 72 680 Td (Measured total cost \(USD\): 0.2316939675) Tj
 72 664 Td (Competitive-gap reply rate: {'reply_rate': 1.0, 'replied_n': 25, 'outbound_n': 25, 'population_ids': ['hs-prospect+cg0@example.com', 'hs-prospect+cg10@example.c) Tj
-72 648 Td (Generic reply rate: {'reply_rate': 0.23577235772357724, 'replied_n': 29, 'outbound_n': 123, 'population_ids': ['', 'hs-prospect+gen0@example.com', 'hs-prospect+) Tj
-72 632 Td (Reply-rate delta \(cg - gen\): 0.7642276422764227) Tj
+72 648 Td (Generic reply rate: {'reply_rate': 0.1895424836601307, 'replied_n': 29, 'outbound_n': 153, 'population_ids': ['', 'hs-prospect+gen0@example.com', 'hs-prospect+g) Tj
+72 632 Td (Reply-rate delta \(cg - gen\): 0.8104575163398693) Tj
 72 616 Td (Stalled-thread rate \(no booking_created\): {'stalled_rate': 0.9230769230769231, 'stalled_n': 48, 'inbound_n': 52, 'population_ids': ['hs-prospect+cg0@example.c) Tj
 72 600 Td (Cost per qualified lead \(USD\): 0.057923491875) Tj
 72 584 Td () Tj

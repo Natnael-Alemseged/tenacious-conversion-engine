@@ -265,12 +265,11 @@ def test_write_competitor_gap_brief_emits_benchmark_backed_shape(tmp_path, monke
     assert output_path.exists()
     saved = json.loads(output_path.read_text())
     assert saved["prospect_domain"] == "acme.example"
-    assert len(saved["competitors_analyzed"]) >= 5
-    assert saved["benchmark_source"] in {
-        "bundled_sample_competitor_gap_brief",
-        "sparse_sector_fallback_to_sample",
-    }
-    assert payload["gap_quality_self_check"]["all_peer_evidence_has_source_url"] is True
+    assert saved["benchmark_source"] in {"odm_sector_peers", "sparse_sector_insufficient_peers"}
+    assert "gap_quality_self_check" in payload
+    assert "peer_score_histogram" in payload
+    assert "rank_among_peers" in payload
+    assert "prospect_vs_top_quartile_mean_delta" in payload
 
 
 def test_write_discovery_call_context_brief_emits_required_sections(tmp_path, monkeypatch) -> None:

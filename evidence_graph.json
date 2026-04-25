@@ -1,15 +1,15 @@
 {
   "draft": true,
-  "generated_at": "2026-04-25T12:43:01.052590+00:00",
+  "generated_at": "2026-04-25T18:17:04.389420+00:00",
   "claims": [
     {
       "claim_id": "tau2_sealed_pass_at_1",
-      "label": "\u03c4\u00b2-Bench retail pass@1 (sealed held-out)",
+      "label": "\u03c4\u00b2-Bench retail pass@1 \u2014 method (dual_control_v2, sealed held-out)",
       "value": {
-        "mean": 0.35,
+        "mean": 0.45,
         "ci_95": [
-          0.15,
-          0.55
+          0.25,
+          0.65
         ],
         "n": 20
       },
@@ -17,14 +17,178 @@
       "sources": [
         {
           "kind": "trace",
-          "path": "eval/runs/tau2_sealed/retail-test-20260425_120649-30a2a151/held_out_traces.jsonl"
+          "path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/held_out_traces.jsonl"
         },
         {
           "kind": "trace",
-          "path": "eval/runs/tau2_sealed/retail-test-20260425_120649-30a2a151/run_meta.json"
+          "path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/run_meta.json"
         }
       ],
-      "derivation": "Mean reward over sealed held-out simulations; CI via deterministic bootstrap over simulation rewards.",
+      "derivation": "Mean reward over sealed held-out simulations (dual_control_v2 prompt, 20 tasks, 1 trial); CI via deterministic bootstrap over simulation rewards.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "day1_sealed_baseline_pass_at_1",
+      "label": "\u03c4\u00b2-Bench retail pass@1 \u2014 Day-1 sealed baseline (stock LLMAgent, test split)",
+      "value": {
+        "mean": 0.4,
+        "ci_95": [
+          0.2,
+          0.6
+        ],
+        "n": 20
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/tau2_sealed/retail-test-20260425_162224-9fb5ef97/held_out_traces.jsonl"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/tau2_sealed/retail-test-20260425_162224-9fb5ef97/run_meta.json"
+        }
+      ],
+      "derivation": "Mean reward for the stock \u03c4\u00b2-Bench LLMAgent on the sealed test split (20 tasks, 1 trial). Used as Delta A denominator. Distinct from the historical train-split dev baseline (0.278) recorded in baseline.md.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "day1_historical_baseline_pass_at_1",
+      "label": "\u03c4\u00b2-Bench retail pass@1 \u2014 historical Day-1 dev baseline (train split, reference only)",
+      "value": {
+        "mean": 0.278,
+        "ci_95": [
+          0.157,
+          0.399
+        ],
+        "n_tasks": 30,
+        "valid_trials": 3
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "baseline.md"
+        }
+      ],
+      "derivation": "Mean pass@1 over 3 valid trials on the first 30 tasks of the train split (2 of 5 trials excluded: infrastructure_error). Recorded in baseline.md. NOT used in Delta A, B, or C \u2014 those use the sealed test-split baseline. Reported here for historical reference only.",
+      "recompute": {
+        "command": "cat baseline.md  # static document, no recompute needed"
+      }
+    },
+    {
+      "claim_id": "speed_to_lead_p50_seconds",
+      "label": "Speed-to-lead: agent task p50 duration (seconds, method sealed run)",
+      "value": {
+        "p50_s": 27.46,
+        "p95_s": 61.53,
+        "n": 20
+      },
+      "unit": "seconds",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/held_out_traces.jsonl"
+        }
+      ],
+      "derivation": "p50 = median(duration_s) over 20 sealed method tasks. p95 uses ceil(0.95\u00d7n)\u22121 index (same as generate_submission_artifacts.py). Human baseline is 42 min (2 520 s) median per published industry survey.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "annualized_impact_conservative",
+      "label": "Annualized labor-savings impact \u2014 conservative (50 leads/week)",
+      "value": {
+        "annual_savings_usd": 104974.52,
+        "leads_per_week": 50,
+        "annual_leads": 2500,
+        "net_savings_per_attempt_usd": 41.9898,
+        "labor_cost_per_attempt_usd": 42.0,
+        "agent_cost_per_attempt_usd": 0.010193
+      },
+      "unit": "usd_per_year",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "ablation_results.json"
+        },
+        {
+          "kind": "published",
+          "label": "SDR fully-loaded rate $60/hr"
+        },
+        {
+          "kind": "published",
+          "label": "Human speed-to-lead 42 min (spec)"
+        }
+      ],
+      "derivation": "annual_savings = (sdr_hourly \u00d7 human_minutes/60 \u2212 agent_cost/task) \u00d7 leads_per_week \u00d7 50 weeks = ($42.00 \u2212 $0.0102) \u00d7 50 \u00d7 50 = $104,974.52. Agent cost from ablation_results.json method condition.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "annualized_impact_expected",
+      "label": "Annualized labor-savings impact \u2014 expected (200 leads/week)",
+      "value": {
+        "annual_savings_usd": 419898.07,
+        "leads_per_week": 200,
+        "annual_leads": 10000,
+        "net_savings_per_attempt_usd": 41.9898,
+        "labor_cost_per_attempt_usd": 42.0,
+        "agent_cost_per_attempt_usd": 0.010193
+      },
+      "unit": "usd_per_year",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "ablation_results.json"
+        },
+        {
+          "kind": "published",
+          "label": "SDR fully-loaded rate $60/hr"
+        },
+        {
+          "kind": "published",
+          "label": "Human speed-to-lead 42 min (spec)"
+        }
+      ],
+      "derivation": "annual_savings = (sdr_hourly \u00d7 human_minutes/60 \u2212 agent_cost/task) \u00d7 leads_per_week \u00d7 50 weeks = ($42.00 \u2212 $0.0102) \u00d7 200 \u00d7 50 = $419,898.07. Agent cost from ablation_results.json method condition.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "annualized_impact_upside",
+      "label": "Annualized labor-savings impact \u2014 upside (1 000 leads/week)",
+      "value": {
+        "annual_savings_usd": 2099490.35,
+        "leads_per_week": 1000,
+        "annual_leads": 50000,
+        "net_savings_per_attempt_usd": 41.9898,
+        "labor_cost_per_attempt_usd": 42.0,
+        "agent_cost_per_attempt_usd": 0.010193
+      },
+      "unit": "usd_per_year",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "ablation_results.json"
+        },
+        {
+          "kind": "published",
+          "label": "SDR fully-loaded rate $60/hr"
+        },
+        {
+          "kind": "published",
+          "label": "Human speed-to-lead 42 min (spec)"
+        }
+      ],
+      "derivation": "annual_savings = (sdr_hourly \u00d7 human_minutes/60 \u2212 agent_cost/task) \u00d7 leads_per_week \u00d7 50 weeks = ($42.00 \u2212 $0.0102) \u00d7 1000 \u00d7 50 = $2,099,490.35. Agent cost from ablation_results.json method condition.",
       "recompute": {
         "command": "uv run python scripts/generate_act5.py --strict-final"
       }
@@ -120,9 +284,9 @@
       "claim_id": "generic_reply_rate",
       "label": "Generic outbound reply rate (non-autoresponder)",
       "value": {
-        "reply_rate": 0.23577235772357724,
+        "reply_rate": 0.1895424836601307,
         "replied_n": 29,
-        "outbound_n": 123,
+        "outbound_n": 153,
         "population_ids": [
           "",
           "hs-prospect+gen0@example.com",
@@ -159,7 +323,7 @@
     {
       "claim_id": "competitive_gap_reply_rate_delta",
       "label": "Reply-rate delta: competitive-gap minus generic",
-      "value": 0.7642276422764227,
+      "value": 0.8104575163398693,
       "unit": "proportion",
       "sources": [
         {

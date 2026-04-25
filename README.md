@@ -211,7 +211,7 @@ Submission candidate: Act I is complete, the core Act II loop is partially imple
 
 Act II items still deferred:
 
-- `competitor_gap_brief.json`
+- `competitor_gap_brief.json` rubric alignment: remove undisclosed sample padding, rank peer selection, and tighten schema requirements
 - HubSpot MCP migration (current implementation uses direct HubSpot HTTP APIs)
 - richer bench-summary matching beyond the current keyword gate
 
