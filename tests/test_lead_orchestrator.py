@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent.models.webhooks import InboundSmsEvent
+from agent.workflows.doc_grounded_outbound import OutboundDraft
 from agent.workflows.lead_orchestrator import (
     LeadOrchestrator,
     _build_subject,
@@ -211,3 +212,120 @@ def test_inbound_sms_booking_intent_includes_calcom_link_when_configured() -> No
     assert orc.sms.send_sms.call_count == 1
     sent_message = orc.sms.send_sms.call_args.kwargs.get("message", "")
     assert "https://cal.com/tenacious-demo" in sent_message
+
+
+def test_send_outbound_email_cold_doc_grounded_variant_calls_builder(
+    monkeypatch,
+) -> None:
+    orc = _make_orchestrator()
+    captured: dict = {}
+
+    def fake_builder(*, brief, first_name, cal_link, step):
+        captured["brief"] = brief
+        captured["first_name"] = first_name
+        captured["cal_link"] = cal_link
+        captured["step"] = step
+        return OutboundDraft(
+            subject="Doc-grounded subject line",
+            html="<p>doc html</p>",
+            text="doc text",
+            doc_sources_used=["urn:ref:a"],
+            fallback_used=True,
+            constraint_violations=["banned_phrase:x"],
+            word_count=3,
+        )
+
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.build_doc_grounded_cold_outbound",
+        fake_builder,
+    )
+    with (
+        patch("agent.workflows.lead_orchestrator.settings.outbound_enabled", True),
+        patch("agent.workflows.lead_orchestrator.settings.calcom_username", "fixtureuser"),
+    ):
+        orc.send_outbound_email(
+            to_email="jane.doe@example.com",
+            company_name="Acme Corp",
+            signal_summary="12 open Python roles",
+            icp_segment=1,
+            bench_to_brief_gate_passed=True,
+            outbound_variant="cold_doc_grounded_email_1",
+        )
+    assert captured["step"] == 1
+    assert captured["first_name"] == "Jane"
+    assert captured["brief"].company_name == "Acme Corp"
+    assert captured["brief"].icp_segment == 1
+    assert captured["cal_link"] == "https://cal.com/fixtureuser."
+    orc.resend.send_email.assert_called_once()
+    send_kw = orc.resend.send_email.call_args[1]
+    assert send_kw["subject"] == "Doc-grounded subject line"
+    assert send_kw["html"] == "<p>doc html</p>"
+    assert send_kw["text"] == "doc text"
+
+
+def test_send_outbound_email_cold_doc_grounded_merges_telemetry_metadata(
+    monkeypatch,
+) -> None:
+    orc = _make_orchestrator()
+    step_seen: list[int] = []
+
+    def fake_builder(*, brief, first_name, cal_link, step):
+        step_seen.append(step)
+        return OutboundDraft(
+            subject="S",
+            html="<p>x</p>",
+            text="x",
+            doc_sources_used=["src/a.md#h1"],
+            fallback_used=False,
+            constraint_violations=[],
+            word_count=1,
+        )
+
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.build_doc_grounded_cold_outbound",
+        fake_builder,
+    )
+    with (
+        patch("agent.workflows.lead_orchestrator.settings.outbound_enabled", True),
+        patch("agent.workflows.lead_orchestrator.settings.calcom_username", "u"),
+    ):
+        result = orc.send_outbound_email(
+            to_email="a@b.com",
+            company_name="Co",
+            signal_summary="sig",
+            bench_to_brief_gate_passed=True,
+            outbound_variant="cold_doc_grounded_email_2",
+            metadata={"thread_id": "t1"},
+        )
+    assert step_seen == [2]
+    assert result["metadata"]["thread_id"] == "t1"
+    assert result["metadata"]["doc_sources_used"] == ["src/a.md#h1"]
+    assert result["metadata"]["fallback_used"] is False
+    assert result["metadata"]["constraint_violations"] == []
+    assert result["metadata"]["kb_variant"] == "cold"
+
+
+def test_send_outbound_email_cold_doc_grounded_skips_builder_when_overrides(
+    monkeypatch,
+) -> None:
+    orc = _make_orchestrator()
+    called: list[str] = []
+
+    def fake_builder(**kwargs):
+        called.append("yes")
+        raise AssertionError("should not be called when overrides present")
+
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.build_doc_grounded_cold_outbound",
+        fake_builder,
+    )
+    with patch("agent.workflows.lead_orchestrator.settings.outbound_enabled", True):
+        orc.send_outbound_email(
+            to_email="x@y.com",
+            company_name="Acme",
+            signal_summary="sig",
+            bench_to_brief_gate_passed=True,
+            outbound_variant="cold_doc_grounded_email_1",
+            subject_override="Custom subject",
+        )
+    assert called == []
