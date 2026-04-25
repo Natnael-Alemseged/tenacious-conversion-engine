@@ -19,7 +19,20 @@ from act5.outbound_events import (
 from agent.core.config import settings
 from agent.enrichment.ai_maturity import confidence_phrasing
 from agent.enrichment.pipeline import run as run_enrichment_pipeline
-from agent.enrichment.schemas import HiringSignalBrief
+from agent.enrichment.schemas import (
+    AiMaturitySignal,
+    BenchSignal,
+    BenchSignalData,
+    ConfidenceMeta,
+    CrunchbaseBriefData,
+    CrunchbaseSignal,
+    EnrichmentSignals,
+    FundingSignal,
+    HiringSignalBrief,
+    JobPostsSignal,
+    LayoffsSignal,
+    LeadershipSignal,
+)
 from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
 from agent.integrations.calcom import CalComClient
 from agent.integrations.hubspot import HubSpotClient
@@ -34,6 +47,7 @@ from agent.workflows.channel_handoff import (
     should_send_email_reply,
     should_send_sms_reply,
 )
+from agent.workflows.doc_grounded_outbound import build_doc_grounded_cold_outbound
 from agent.workflows.doc_grounded_reply import build_doc_grounded_inbound_reply
 from agent.workflows.reply_intent import ReplyIntentResult, classify_reply_intent
 from agent.workflows.thread_context import load_thread_context
@@ -119,6 +133,12 @@ _SUBJECT_SUFFIXES: dict[int, str] = {
     4: ": closing the AI capability gap",
 }
 _SUBJECT_MAX_LEN: int = 60
+
+_COLD_DOC_GROUNDED_EMAIL_STEPS: dict[str, int] = {
+    "cold_doc_grounded_email_1": 1,
+    "cold_doc_grounded_email_2": 2,
+    "cold_doc_grounded_email_3": 3,
+}
 
 
 def _build_subject(company_name: str, segment: int) -> str:
@@ -290,6 +310,61 @@ def _attendee_name_from_email(email: str) -> str:
     local = str(email).split("@", 1)[0]
     name = local.replace(".", " ").replace("_", " ").replace("-", " ").strip()
     return name.title() if name else "Prospect"
+
+
+def _minimal_brief_for_doc_grounded_email(
+    *,
+    company_name: str,
+    icp_segment: int | None,
+    ai_maturity_score: int | None,
+    confidence: float | None,
+    segment_confidence: float | None,
+) -> HiringSignalBrief:
+    m = ConfidenceMeta(tier="medium", factors={}, rationale_codes=())
+    oc = (
+        segment_confidence
+        if segment_confidence is not None
+        else (confidence if confidence is not None else 0.5)
+    )
+    oc = max(0.0, min(1.0, float(oc)))
+    seg = icp_segment if icp_segment in (0, 1, 2, 3, 4) else 0
+    score = ai_maturity_score if ai_maturity_score is not None else 0
+    sc = 0.0
+    if segment_confidence is not None:
+        sc = float(segment_confidence)
+    return HiringSignalBrief(
+        company_name=company_name,
+        icp_segment=seg,
+        segment_confidence=sc,
+        overall_confidence=oc,
+        overall_confidence_weighted=oc,
+        signals=EnrichmentSignals(
+            crunchbase=CrunchbaseSignal(
+                data=CrunchbaseBriefData(),
+                confidence=0.0,
+                confidence_meta=m,
+            ),
+            funding=FundingSignal(data=[], confidence=0.0, confidence_meta=m),
+            layoffs=LayoffsSignal(data=[], confidence=0.0, confidence_meta=m),
+            leadership_change=LeadershipSignal(data=[], confidence=0.0, confidence_meta=m),
+            job_posts=JobPostsSignal(
+                data={"open_roles": 0},
+                confidence=0.0,
+                confidence_meta=m,
+            ),
+            ai_maturity=AiMaturitySignal(
+                score=score,
+                justification="",
+                confidence=0.0,
+                confidence_meta=m,
+            ),
+            bench=BenchSignal(
+                data=BenchSignalData(bench_to_brief_gate_passed=True),
+                confidence=0.0,
+                confidence_meta=m,
+            ),
+        ),
+    )
 
 
 def _booking_intent(text: str) -> bool:
@@ -1201,6 +1276,43 @@ class LeadOrchestrator:
             "and a few scheduling options.</p>"
         )
         text = text_override
+        email_result_metadata: dict[str, Any] | None = metadata
+        if (
+            subject_override is None
+            and html_override is None
+            and text_override is None
+            and outbound_variant in _COLD_DOC_GROUNDED_EMAIL_STEPS
+        ):
+            step = _COLD_DOC_GROUNDED_EMAIL_STEPS[outbound_variant]
+            first_name = _attendee_name_from_email(to_email).split(" ", 1)[0] or "Prospect"
+            cal_link = (
+                f"https://cal.com/{settings.calcom_username}."
+                if settings.calcom_username
+                else "(scheduling link unavailable)"
+            )
+            brief = _minimal_brief_for_doc_grounded_email(
+                company_name=company_name,
+                icp_segment=icp_segment,
+                ai_maturity_score=ai_maturity_score,
+                confidence=confidence,
+                segment_confidence=segment_confidence,
+            )
+            draft = build_doc_grounded_cold_outbound(
+                brief=brief,
+                first_name=first_name,
+                cal_link=cal_link,
+                step=step,
+            )
+            subject = draft.subject
+            html = draft.html
+            text = draft.text
+            email_result_metadata = {
+                **(metadata or {}),
+                "doc_sources_used": draft.doc_sources_used,
+                "fallback_used": draft.fallback_used,
+                "constraint_violations": list(draft.constraint_violations),
+                "kb_variant": "cold",
+            }
         headers: dict[str, str] = {}
         if reply_to_message_id:
             headers["In-Reply-To"] = reply_to_message_id
@@ -1333,8 +1445,8 @@ class LeadOrchestrator:
                     hs_span.update(output={"ok": True})
 
             result["outbound_variant"] = outbound_variant
-            if metadata:
-                result["metadata"] = metadata
+            if email_result_metadata is not None:
+                result["metadata"] = email_result_metadata
             hubspot_contact_id = str((hs_result or {}).get("id") or "")
             resend_thread_key = reply_to_message_id or str(result.get("id") or "")
             append_outbound_event(
@@ -1349,11 +1461,11 @@ class LeadOrchestrator:
                     "idempotency_key": idempotency_key or "",
                     "intended_to": to_email,
                     "routed_to": routed_to,
-                    "metadata": metadata or {},
+                    "metadata": email_result_metadata or {},
                 }
             )
             if thread_id:
-                message_metadata = {**outbound_audit, **(metadata or {})}
+                message_metadata = {**outbound_audit, **(email_result_metadata or {})}
                 self.conversations.insert_message(
                     thread_id=thread_id,
                     channel="email",
