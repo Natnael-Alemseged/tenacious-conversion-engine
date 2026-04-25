@@ -9,6 +9,7 @@ from agent.enrichment.schemas import HiringSignalBrief
 from agent.integrations.resend_email import ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.workflows.lead_orchestrator import LeadOrchestrator
+from agent.workflows.reply_intent import ReplyIntentResult
 
 
 class FakeSpan:
@@ -417,7 +418,10 @@ def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypat
     assert result["enrichment"]["booking_requested"] is True
     assert result["reply"]["to_email"] == "lead@acme.com"
     assert result["reply"]["subject"] == "Re: Can we schedule a call?"
-    assert "Thanks for reaching out about engineering hiring at Acme." in result["reply"]["html"]
+    assert "Yes. Pick a slot here: https://cal.com/tenacious-demo." in result["reply"]["html"]
+    assert "public-signal brief" in result["reply"]["html"]
+    assert result["reply"]["doc_sources_used"]
+    assert result["reply"]["outbound_variant"] == "inbound_doc_grounded"
     assert "https://cal.com/tenacious-demo" in result["reply"]["html"]
     assert result["reply"]["headers"]["In-Reply-To"] == "<msg-456>"
     assert "booking" not in result
@@ -498,7 +502,8 @@ def test_handle_email_auto_books_when_explicit_iso_time_present(monkeypatch) -> 
     assert result["booking"]["metadata"]["source"] == "inbound_email"
     assert result["enrichment"]["booking_created"] is True
     assert result["enrichment"]["requested_booking_start"] == "2026-05-01T10:00:00Z"
-    assert "I've booked the call for 2026-05-01T10:00:00Z UTC." in result["reply"]["html"]
+    assert "Booked for 2026-05-01T10:00:00Z UTC." in result["reply"]["html"]
+    assert "role count, seniority mix, timezone overlap" in result["reply"]["html"]
 
 
 def test_handle_email_logs_booking_created_phase(caplog, monkeypatch) -> None:
@@ -562,8 +567,84 @@ def test_handle_email_replies_for_exploratory_lead_even_without_bench_match(monk
     assert result["reply"]["to_email"] == "natnaela@10academy.org"
     assert result["reply"]["tags"]["outbound_mode"] == "live"
     assert result["reply"]["subject"] == "Re: hire engineers"
-    assert "FastAPI and Python hiring" in result["reply"]["html"]
+    assert "Glad this landed." in result["reply"]["html"]
+    assert "exploratory fit" in result["reply"]["html"]
+    assert "bench gate" not in result["reply"]["html"].lower()
     assert result["enrichment"]["bench_to_brief_gate_passed"] is False
+
+
+def test_handle_email_brief_reply_is_grounded_in_tenacious_docs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.classify_reply_intent",
+        lambda **_: ReplyIntentResult(intent="request_brief", confidence=0.9),
+    )
+    brief = _fake_brief(company_name="SynthCo", icp_segment=0, segment_confidence=0.5)
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    result = orchestrator.handle_email(
+        InboundEmailEvent(
+            from_email="prospect@synthco.example",
+            subject="Re: SynthCo: quick thought",
+            body="Yes, I would love to get qualification brief",
+            message_id="manual_inbound_1",
+            in_reply_to="18420c63-5641-4050-9f92-b5db43570415",
+        )
+    )
+
+    html = result["reply"]["html"]
+    assert "Grounded version:" in html
+    assert "Segment fit: exploratory fit (confidence 0.50)" in html
+    assert "Capacity check:" in html
+    assert "bench gate" not in html.lower()
+    joined_sources = "\n".join(result["reply"]["doc_sources_used"])
+    assert "tenacious_sales_data/seed/style_guide.md" in joined_sources
+    assert "signature-template" in joined_sources or "signature template" in joined_sources.lower()
+
+
+def test_handle_email_hard_no_is_suppressed_and_no_reply_sent(monkeypatch, tmp_path) -> None:
+    # Ensure suppression file is isolated.
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.email_suppression_path",
+        str(tmp_path / "email_suppression.json"),
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+
+    brief = _fake_brief(company_name="SynthCo", icp_segment=0, segment_confidence=0.5)
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    result = orchestrator.handle_email(
+        InboundEmailEvent(
+            from_email="prospect@synthco.example",
+            subject="Re: SynthCo: quick thought",
+            body="Not interested. Please remove me.",
+            message_id="manual_inbound_2",
+            in_reply_to="18420c63-5641-4050-9f92-b5db43570415",
+        )
+    )
+    assert result["reply"]["status"] == "skipped"
+    assert result["reply"]["reason"] == "hard_no"
+    assert result["reply_classification"]["reply_class"] in ("hard_no", "unknown")
 
 
 def _make_orchestrator(

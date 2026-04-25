@@ -30,9 +30,7 @@ def test_chat_completion_rotates_after_retryable_credit_error() -> None:
         return httpx.Response(
             200,
             json={
-                "choices": [
-                    {"message": {"role": "assistant", "content": "rotated successfully"}}
-                ]
+                "choices": [{"message": {"role": "assistant", "content": "rotated successfully"}}]
             },
             request=request,
         )

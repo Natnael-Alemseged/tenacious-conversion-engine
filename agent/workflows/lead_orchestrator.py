@@ -21,10 +21,13 @@ from agent.integrations.langfuse import LangfuseClient
 from agent.integrations.resend_email import ResendClient, ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.storage.conversations import ConversationStore
+from agent.storage.suppression import EmailSuppressionStore
 from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
+from agent.workflows.doc_grounded_reply import build_doc_grounded_inbound_reply
 from agent.workflows.reply_intent import ReplyIntentResult, classify_reply_intent
 from agent.workflows.thread_context import load_thread_context
 from agent.workflows.thread_state import recompute_state
+from agent.workflows.warm_reply_classifier import classify_warm_reply
 
 DownstreamEventHandler = (
     Callable[[str, dict[str, Any], InboundEmailEvent | InboundSmsEvent], None] | None
@@ -458,6 +461,7 @@ class LeadOrchestrator:
         self.resend = resend or ResendClient()
         self.sms = sms or AfricasTalkingSmsClient()
         self.conversations = ConversationStore()
+        self.email_suppression = EmailSuppressionStore(settings.email_suppression_path)
         self.reply_handler = reply_handler
         self.bounce_handler = bounce_handler
         self.enrichment_runner = enrichment_runner or run_enrichment_pipeline
@@ -514,6 +518,19 @@ class LeadOrchestrator:
 
     def handle_email(self, event: InboundEmailEvent) -> dict[str, Any]:
         company_name = _company_name_from_email(str(event.from_email))
+        warm_class = classify_warm_reply(subject=event.subject, body=event.body)
+        if self.email_suppression.is_suppressed(str(event.from_email or "")):
+            return {
+                "status": "skipped",
+                "reason": "email_suppressed",
+                "from_email": str(event.from_email or ""),
+                "reply_classification": {
+                    "reply_class": warm_class.reply_class,
+                    "confidence": warm_class.confidence,
+                    "abstained": warm_class.abstained,
+                    "notes": warm_class.notes,
+                },
+            }
         resolved = self.conversations.resolve_thread_for_email(
             from_email=str(event.from_email),
             subject=str(event.subject),
@@ -699,25 +716,37 @@ class LeadOrchestrator:
                             store=self.conversations, thread_id=thread_id, limit=10
                         ).__dict__
                     intent = classify_reply_intent(subject=event.subject, body=event.body)
-                    segment_line = (
-                        f"- Segment: {brief.icp_segment} "
-                        f"(confidence {brief.segment_confidence:.2f})\n"
-                    )
-                    qualification_brief = (
-                        segment_line
-                        + f"- AI maturity: {brief.signals.ai_maturity.score}/3\n"
-                        + "- Bench gate: "
-                        + ("passed\n" if bench_gate_passed else "failed\n")
-                        + f"- Summary: {_signal_summary_from_brief(brief)}\n"
-                    )
-                    reply_subject, reply_html, reply_text = _build_inbound_email_reply(
+                    result["reply_classification"] = {
+                        "reply_class": warm_class.reply_class,
+                        "confidence": warm_class.confidence,
+                        "abstained": warm_class.abstained,
+                        "notes": warm_class.notes,
+                    }
+                    if warm_class.reply_class == "hard_no" and warm_class.confidence >= 0.6:
+                        # Per warm.md: no reply; suppress further email.
+                        self.email_suppression.suppress(
+                            str(event.from_email or ""), reason="hard_no"
+                        )
+                        domain = _email_domain(str(event.from_email or ""))
+                        if domain:
+                            self.email_suppression.suppress(domain, reason="hard_no_domain")
+                        result["reply"] = {"status": "skipped", "reason": "hard_no"}
+                        if thread_id:
+                            self.conversations.insert_event(
+                                thread_id=thread_id,
+                                event_type="hard_no",
+                                event_at=event.received_at,
+                                payload={"email": str(event.from_email or ""), "domain": domain},
+                            )
+                        self._emit_reply_handler(channel="email", result=result, event=event)
+                        return result
+                    grounded_reply = build_doc_grounded_inbound_reply(
                         event=event,
-                        company_name=brief.company_name,
+                        brief=brief,
                         booking_requested=booking_requested,
                         booking_result=booking_result,
                         requested_booking_start=requested_booking_start,
                         intent=intent,
-                        qualification_brief=qualification_brief,
                     )
                     reference_message_ids = [
                         ref for ref in (event.in_reply_to, event.message_id) if ref
@@ -730,16 +759,31 @@ class LeadOrchestrator:
                         ai_maturity_score=brief.signals.ai_maturity.score,
                         confidence=brief.segment_confidence,
                         bench_to_brief_gate_passed=True,
-                        subject_override=reply_subject,
-                        html_override=reply_html,
-                        text_override=reply_text,
+                        subject_override=grounded_reply.subject,
+                        html_override=grounded_reply.html,
+                        text_override=grounded_reply.text,
                         reply_to_message_id=event.message_id or None,
                         reference_message_ids=reference_message_ids or None,
                         idempotency_key=(
                             f"inbound-reply:{event.message_id}" if event.message_id else None
                         ),
+                        outbound_variant="inbound_doc_grounded",
                         thread_id=thread_id or None,
+                        metadata={
+                            "reply_builder": "doc_grounded",
+                            "doc_sources_used": grounded_reply.doc_sources_used,
+                            "reply_intent": intent.intent if intent else "",
+                            "warm_reply_class": warm_class.reply_class,
+                            "warm_reply_class_confidence": warm_class.confidence,
+                            "warm_reply_class_abstained": warm_class.abstained,
+                            "fallback_used": bool(getattr(grounded_reply, "fallback_used", False)),
+                            "constraint_violations": getattr(
+                                grounded_reply, "constraint_violations", None
+                            )
+                            or [],
+                        },
                     )
+                    reply_result["doc_sources_used"] = grounded_reply.doc_sources_used
                     result["reply"] = reply_result
                     _log.info(
                         "handle_email",
@@ -765,6 +809,13 @@ class LeadOrchestrator:
                     result["reply"] = {
                         "status": "skipped",
                         "reason": reason,
+                    }
+                    # Still record reply classification even when skipping.
+                    result["reply_classification"] = {
+                        "reply_class": warm_class.reply_class,
+                        "confidence": warm_class.confidence,
+                        "abstained": warm_class.abstained,
+                        "notes": warm_class.notes,
                     }
                     _log.info(
                         "handle_email",
@@ -1046,6 +1097,7 @@ class LeadOrchestrator:
         idempotency_key: str | None = None,
         outbound_variant: str = "generic",
         thread_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         seg = icp_segment if icp_segment in _SUBJECT_SUFFIXES else 0
         subject = _build_subject(company_name, seg)
@@ -1137,6 +1189,7 @@ class LeadOrchestrator:
             "confidence": confidence,
             "segment_confidence": segment_confidence,
             "outbound_variant": outbound_variant,
+            "metadata": metadata or {},
         }
         with self.langfuse.trace_workflow("send_outbound_email", trace_payload):
             with self.langfuse.span(
@@ -1236,6 +1289,9 @@ class LeadOrchestrator:
                 if hs_span:
                     hs_span.update(output={"ok": True})
 
+            result["outbound_variant"] = outbound_variant
+            if metadata:
+                result["metadata"] = metadata
             hubspot_contact_id = str((hs_result or {}).get("id") or "")
             resend_thread_key = reply_to_message_id or str(result.get("id") or "")
             append_outbound_event(
@@ -1250,9 +1306,11 @@ class LeadOrchestrator:
                     "idempotency_key": idempotency_key or "",
                     "intended_to": to_email,
                     "routed_to": routed_to,
+                    "metadata": metadata or {},
                 }
             )
             if thread_id:
+                message_metadata = {**outbound_audit, **(metadata or {})}
                 self.conversations.insert_message(
                     thread_id=thread_id,
                     channel="email",
@@ -1268,7 +1326,7 @@ class LeadOrchestrator:
                     sent_at=datetime.now(UTC),
                     outbound_variant=outbound_variant,
                     draft=bool(outbound_audit.get("draft", True)),
-                    metadata=outbound_audit,
+                    metadata=message_metadata,
                 )
 
             _log.info(
