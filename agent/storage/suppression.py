@@ -11,9 +11,9 @@ class SmsSuppressionStore:
         data = self._load()
         return phone_number in data
 
-    def suppress(self, phone_number: str) -> None:
+    def suppress(self, phone_number: str, *, reason: str = "") -> None:
         data = self._load()
-        data[phone_number] = {"status": "suppressed"}
+        data[phone_number] = {"status": "suppressed", "reason": reason[:200]}
         self._save(data)
 
     def unsuppress(self, phone_number: str) -> None:
