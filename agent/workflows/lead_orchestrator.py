@@ -3,8 +3,10 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+import httpx
 
 from act5.autoresponder import classify_autoresponder, load_heuristics
 from act5.outbound_events import append_outbound_event, append_reply_classification, now_iso
@@ -1436,15 +1438,38 @@ class LeadOrchestrator:
         }
         with self.langfuse.trace_workflow("book_discovery_call", payload):
             with self.langfuse.span("calcom.create_booking", input=payload) as span:
-                booking = self.calcom.create_booking(
-                    name=attendee_name,
-                    email=attendee_email,
-                    start=start,
-                    timezone=timezone,
-                    length_in_minutes=length_in_minutes,
-                    phone_number=attendee_phone,
-                    metadata=metadata,
-                )
+                booking: dict[str, Any] | None = None
+                attempt_start = start
+                # Cal.com can return 409 Conflict when the exact slot is already booked.
+                # Retry nearby slots instead of failing hard for operator reruns.
+                for attempt in range(6):
+                    try:
+                        booking = self.calcom.create_booking(
+                            name=attendee_name,
+                            email=attendee_email,
+                            start=attempt_start,
+                            timezone=timezone,
+                            length_in_minutes=length_in_minutes,
+                            phone_number=attendee_phone,
+                            metadata=metadata,
+                        )
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        if (
+                            exc.response is not None
+                            and exc.response.status_code == 409
+                            and attempt < 5
+                        ):
+                            # Shift by 30 minutes and retry.
+                            dt = datetime.fromisoformat(
+                                attempt_start.replace("Z", "+00:00")
+                            ).astimezone(UTC)
+                            dt = dt + timedelta(minutes=30)
+                            attempt_start = dt.isoformat().replace("+00:00", "Z")
+                            continue
+                        raise
+                if booking is None:
+                    raise RuntimeError("Cal.com booking retry loop exited without a booking.")
                 if span:
                     span.update(output=booking)
             booking_data = booking.get("data", booking)
