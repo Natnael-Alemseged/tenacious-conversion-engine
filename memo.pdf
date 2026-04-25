@@ -4,39 +4,108 @@
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
 2 0 obj
-<< /Length 1070 >>
+<< /Length 3180 >>
 stream
 BT
 /F1 12 Tf
-72 760 Td (Tenacious Conversion Engine — Act V Memo \(DRAFT\)) Tj
+72 760 Td (Tenacious Conversion Engine — Act V Memo) Tj
 72 744 Td (Page 1/2 — The Decision) Tj
 72 728 Td () Tj
-72 712 Td (τ² sealed pass@1: {'mean': 0.45, 'ci_95': [0.25, 0.65], 'n': 20}) Tj
-72 696 Td (Auto-opt sealed pass@1: 0.4) Tj
-72 680 Td (Measured total cost \(USD\): 0.2316939675) Tj
-72 664 Td (Competitive-gap reply rate: {'reply_rate': 1.0, 'replied_n': 25, 'outbound_n': 25, 'population_ids': ['hs-prospect+cg0@example.com', 'hs-prospect+cg10@example.c) Tj
-72 648 Td (Generic reply rate: {'reply_rate': 0.1895424836601307, 'replied_n': 29, 'outbound_n': 153, 'population_ids': ['', 'hs-prospect+gen0@example.com', 'hs-prospect+g) Tj
-72 632 Td (Reply-rate delta \(cg - gen\): 0.8104575163398693) Tj
-72 616 Td (Stalled-thread rate \(no booking_created\): {'stalled_rate': 0.9230769230769231, 'stalled_n': 48, 'inbound_n': 52, 'population_ids': ['hs-prospect+cg0@example.c) Tj
-72 600 Td (Cost per qualified lead \(USD\): 0.057923491875) Tj
-72 584 Td () Tj
-72 568 Td (Pilot recommendation: Segment 2 email-first pilot, 30 days.) Tj
+72 712 Td (Executive summary \(3 sentences\):) Tj
+72 696 Td (We built a conversion engine that generates signal-grounded outbound and measures reply, stalled-thread, and cost-per-qualified-lead from traces.) Tj
+72 680 Td (On τ²-Bench retail \(sealed\), the method scores 0.450 \(95% CI [0.250, 0.650], n=20\) vs Day-1 baseline 0.400 \(95% CI [0.200, 0.600], n=20\); auto-opt baselin) Tj
+72 664 Td (Recommendation: run a 30-day Segment 2 pilot with a hard kill-switch on wrong-signal rate, and treat competitive-gap reply deltas as synthetic until validated o) Tj
+72 648 Td () Tj
+72 632 Td (1\) τ²-Bench baseline performance \(sealed, 95% CIs\):) Tj
+72 616 Td (- Method pass@1: 0.450 \(95% CI [0.250, 0.650], n=20\)) Tj
+72 600 Td (- Day-1 baseline pass@1: 0.400 \(95% CI [0.200, 0.600], n=20\)) Tj
+72 584 Td (- Auto-opt baseline pass@1: 0.400) Tj
+72 568 Td (- Published reference \(point\): 0.42) Tj
+72 552 Td (- τ² task duration: p50=27.46s, p95=61.53s \(simulator runtime; not email response latency\)) Tj
+72 536 Td () Tj
+72 520 Td (2\) Cost per qualified lead \(CPL\):) Tj
+72 504 Td (- Total measured cost \(Act V rollup\): $0) Tj
+72 488 Td (- CPL \(qualified = booking_created\): $0) Tj
+72 472 Td () Tj
+72 456 Td (3\) Stalled-thread rate delta:) Tj
+72 440 Td (- Measured stalled-thread rate: 88.5% \(54/61 non-booking\)) Tj
+72 424 Td (- Tenacious manual baseline \(given\): 30.0%–40.0%) Tj
+72 408 Td (Context: this measurement uses booking_created as a proxy gate. A high stalled rate here can reflect synthetic volume / calibration mismatch or an overly-strict) Tj
+72 392 Td () Tj
+72 376 Td (4\) Competitive-gap outbound performance \(synthetic evaluation\):) Tj
+72 360 Td (- Competitive-gap reply rate: 100.0% \(25/25\)) Tj
+72 344 Td (- Generic reply rate: 17.8% \(29/163\)) Tj
+72 328 Td (- Reply-rate delta \(cg − generic\): 82.2%) Tj
+72 312 Td (- Top-quartile real-world signal-grounded range \(benchmark\): 7.0%–12.0%) Tj
+72 296 Td (Note: 100% reply rates are a synthetic-data artifact in this run; treat as directional signal only until validated on live outbound.) Tj
+72 280 Td () Tj
+72 264 Td (5\) Annualized dollar impact \(segment-based revenue model\):) Tj
+72 248 Td (- Segment 2: assume 2 discovery calls/week → 6.0–15.0 closes/yr) Tj
+72 232 Td (  Annual revenue impact: $1,440,000–$10,800,000 \(range\)) Tj
+72 216 Td (- Segment 1, Segment 2: assume 6 discovery calls/week → 18.0–45.0 closes/yr) Tj
+72 200 Td (  Annual revenue impact: $4,320,000–$32,400,000 \(range\)) Tj
+72 184 Td (- Segment 1, Segment 2, Segment 3, Segment 4: assume 12 discovery calls/week → 36.0–90.0 closes/yr) Tj
+72 168 Td (  Annual revenue impact: $2,880,000–$64,800,000 \(range\)) Tj
+72 152 Td () Tj
+72 136 Td (6\) Pilot scope recommendation \(30 days\):) Tj
+72 120 Td (- Segment: Segment 2) Tj
+72 104 Td (- Lead volume: assume 2 discovery calls/week booked) Tj
+72 88 Td (- Weekly budget cap: $25 \(assumption\)) Tj
+72 72 Td (- Success criterion: ≥5 discovery calls booked with qualified Segment 2 prospects within 30 days) Tj
 ET
 endstream
 endobj
 3 0 obj
-<< /Length 481 >>
+<< /Length 4067 >>
 stream
 BT
 /F1 12 Tf
-72 760 Td (Page 2/2 — The Skeptic’s Appendix \(DRAFT\)) Tj
-72 744 Td () Tj
-72 728 Td (1\) Offshore-perception objection risk \(see transcripts\).) Tj
-72 712 Td (2\) Bench mismatch risk \(see seed/bench_summary.json\).) Tj
-72 696 Td (3\) Public-signal lossiness risk \(false positives/negatives\).) Tj
-72 680 Td (4\) Gap-analysis framing risk \(avoid condescension\).) Tj
-72 664 Td () Tj
-72 648 Td (Kill-switch: pause if wrong-signal rate exceeds threshold.) Tj
+72 760 Td (Tenacious Conversion Engine — Act V Memo) Tj
+72 744 Td (Page 2/2 — The Skeptic’s Appendix) Tj
+72 728 Td () Tj
+72 712 Td (A\) Four failure modes τ²-Bench does not capture \(what / why τ² misses / what to add / cost\):) Tj
+72 696 Td (1\) Wrong-signal outreach \(signal_overclaiming\):) Tj
+72 680 Td (   What: agent asserts hiring/AI/funding claims from weak public signal.) Tj
+72 664 Td (   Why τ² misses: τ² retail tasks do not exercise public-signal grounding for real companies.) Tj
+72 648 Td (   Add: enforce confidence-tier phrasing + abstention when confidence < 0.6; add probe gates.) Tj
+72 632 Td (   Cost: lower throughput; requires more enrichment checks per prospect.) Tj
+72 616 Td (2\) Tone/brand offense \(offshore language triggers\):) Tj
+72 600 Td (   What: phrasing that reads like low-quality outsourcing spam.) Tj
+72 584 Td (   Why τ² misses: retail benchmark has no brand sensitivity or founder persona risk.) Tj
+72 568 Td (   Add: style-guide rubric + red-flag phrase filters + human review for first 50 sends.) Tj
+72 552 Td (   Cost: review time; false positives can reduce volume.) Tj
+72 536 Td (3\) Booking proxy mismatch \(booking_created ≠ qualified\):) Tj
+72 520 Td (   What: system can get replies but fail the booking proxy due to tooling mismatch.) Tj
+72 504 Td (   Why τ² misses: τ² tasks are closed-form; no real calendar / sales workflow variance.) Tj
+72 488 Td (   Add: align qualification to Tenacious CRM stages; instrument post-reply handoff.) Tj
+72 472 Td (   Cost: HubSpot stage mapping + ops time.) Tj
+72 456 Td (4\) Competitive-gap benchmark mismatch:) Tj
+72 440 Td (   What: “top-quartile practice” may be irrelevant or strategically wrong for a prospect.) Tj
+72 424 Td (   Why τ² misses: benchmark is not conditioned on sub-niche strategy constraints.) Tj
+72 408 Td (   Add: ask a calibration question before prescribing; allow ‘deliberate choice’ escape hatch.) Tj
+72 392 Td (   Cost: longer emails; slightly lower reply rates expected.) Tj
+72 376 Td () Tj
+72 360 Td (B\) Public-signal lossiness \(false negatives / false positives\):) Tj
+72 344 Td (False negative: quietly sophisticated but silent company → scorer underestimates readiness → overly basic pitch → lost deal.) Tj
+72 328 Td (False positive: loud but shallow company → scorer overestimates readiness → over-technical pitch → brand damage + lower replies.) Tj
+72 312 Td () Tj
+72 296 Td (C\) Gap-analysis risks \(when top-quartile is a bad benchmark\):) Tj
+72 280 Td (Risk 1: deliberate strategy \(e.g., regulated workflow where ‘move fast’ practices are harmful\) → wrong recommendation harms trust.) Tj
+72 264 Td (Risk 2: sub-niche irrelevance \(capability gap is not binding constraint\) → prospect ignores message and categorizes as spam.) Tj
+72 248 Td () Tj
+72 232 Td (D\) Brand-reputation comparison \(unit economics\):) Tj
+72 216 Td (Assume 1,000 emails sent; if 5% contain a wrong signal, that's 50 wrong-signal emails.) Tj
+72 200 Td (If each wrong-signal email has an expected reputation cost of $10k in pipeline suppression, expected brand cost = $500k.) Tj
+72 184 Td (Compare to expected reply-rate lift in the 7–12% range \(vs 1–3% baseline\).) Tj
+72 168 Td () Tj
+72 152 Td (E\) One honest unresolved probe \(business impact if deployed anyway\):) Tj
+72 136 Td (Probe: signal_overclaiming \(P-005\): assertive Segment 1 opener regardless of confidence \(measured trigger rate 9/9\).) Tj
+72 120 Td (Impact: undermines the core ‘grounded research’ value prop; can revert reply rates to baseline and create viral brand risk.) Tj
+72 104 Td () Tj
+72 88 Td (F\) Kill switch clause \(metric / threshold / rollback condition\):) Tj
+72 72 Td (Metric: wrong-signal rate on manually audited sample of first 100 sends.) Tj
+72 56 Td (Threshold: pause if wrong-signal rate ≥ 5% or any single high-severity false claim triggers an executive complaint.) Tj
+72 40 Td (Rollback: revert to generic pitch template + require human approval for signal-grounded claims until fixed.) Tj
 ET
 endstream
 endobj
@@ -57,13 +126,13 @@ xref
 0000000000 65535 f 
 0000000015 00000 n 
 0000000085 00000 n 
-0000001206 00000 n 
-0000001737 00000 n 
-0000001863 00000 n 
-0000001989 00000 n 
-0000002052 00000 n 
+0000003316 00000 n 
+0000007434 00000 n 
+0000007560 00000 n 
+0000007686 00000 n 
+0000007749 00000 n 
 trailer
 << /Size 8 /Root 7 0 R >>
 startxref
-2101
+7798
 %%EOF

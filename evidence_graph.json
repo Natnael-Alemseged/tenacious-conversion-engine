@@ -1,6 +1,22 @@
 {
-  "draft": true,
-  "generated_at": "2026-04-25T18:23:18.271743+00:00",
+  "draft": false,
+  "generated_at": "2026-04-25T19:14:39.770778+00:00",
+  "citations": {
+    "tenacious_baseline_numbers": {
+      "kind": "tenacious_internal",
+      "path": "tenacious_sales_data/seed/baseline_numbers.md"
+    },
+    "tenacious_bench_summary": {
+      "kind": "tenacious_internal",
+      "path": "tenacious_sales_data/seed/bench_summary.json",
+      "as_of": "2026-04-21"
+    },
+    "tau2_leaderboard_feb_2026": {
+      "kind": "published",
+      "label": "\u03c4\u00b2-Bench retail leaderboard reference (Feb 2026)",
+      "url": null
+    }
+  },
   "claims": [
     {
       "claim_id": "tau2_sealed_pass_at_1",
@@ -81,8 +97,8 @@
       }
     },
     {
-      "claim_id": "speed_to_lead_p50_seconds",
-      "label": "Speed-to-lead: agent task p50 duration (seconds, method sealed run)",
+      "claim_id": "tau2_task_duration_p50_seconds",
+      "label": "\u03c4\u00b2 task duration p50/p95 (seconds, method sealed run)",
       "value": {
         "p50_s": 27.46,
         "p95_s": 61.53,
@@ -95,100 +111,355 @@
           "path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/held_out_traces.jsonl"
         }
       ],
-      "derivation": "p50 = median(duration_s) over 20 sealed method tasks. p95 uses ceil(0.95\u00d7n)\u22121 index (same as generate_submission_artifacts.py). Human baseline is 42 min (2 520 s) median per published industry survey.",
+      "derivation": "p50 = median(duration_s) over 20 sealed method \u03c4\u00b2 tasks; p95 uses ceil(0.95\u00d7n)\u22121 index (same as generate_submission_artifacts.py). This is \u03c4\u00b2 simulator task completion time, not real-world email response latency.",
       "recompute": {
         "command": "uv run python scripts/generate_act5.py --strict-final"
       }
     },
     {
-      "claim_id": "annualized_impact_conservative",
-      "label": "Annualized labor-savings impact \u2014 conservative (50 leads/week)",
+      "claim_id": "tenacious_manual_stalled_thread_baseline",
+      "label": "Tenacious manual stalled-thread baseline (range)",
       "value": {
-        "annual_savings_usd": 104974.52,
-        "leads_per_week": 50,
-        "annual_leads": 2500,
-        "net_savings_per_attempt_usd": 41.9898,
-        "labor_cost_per_attempt_usd": 42.0,
-        "agent_cost_per_attempt_usd": 0.010193
+        "range": [
+          0.3,
+          0.4
+        ]
       },
-      "unit": "usd_per_year",
+      "unit": "proportion",
       "sources": [
         {
-          "kind": "trace",
-          "path": "ablation_results.json"
-        },
-        {
-          "kind": "published",
-          "label": "SDR fully-loaded rate $60/hr"
-        },
-        {
-          "kind": "published",
-          "label": "Human speed-to-lead 42 min (spec)"
+          "kind": "document",
+          "path": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md"
         }
       ],
-      "derivation": "annual_savings = (sdr_hourly \u00d7 human_minutes/60 \u2212 agent_cost/task) \u00d7 leads_per_week \u00d7 50 weeks = ($42.00 \u2212 $0.0102) \u00d7 50 \u00d7 50 = $104,974.52. Agent cost from ablation_results.json method condition.",
+      "derivation": "Baseline range stated in the Week 10 Act V memo requirements.",
       "recompute": {
         "command": "uv run python scripts/generate_act5.py --strict-final"
       }
     },
     {
-      "claim_id": "annualized_impact_expected",
-      "label": "Annualized labor-savings impact \u2014 expected (200 leads/week)",
+      "claim_id": "top_quartile_signal_grounded_reply_rate_range",
+      "label": "Signal-grounded outbound reply rate (top quartile, range)",
       "value": {
-        "annual_savings_usd": 419898.07,
-        "leads_per_week": 200,
-        "annual_leads": 10000,
-        "net_savings_per_attempt_usd": 41.9898,
-        "labor_cost_per_attempt_usd": 42.0,
-        "agent_cost_per_attempt_usd": 0.010193
+        "range": [
+          0.07,
+          0.12
+        ]
       },
-      "unit": "usd_per_year",
+      "unit": "proportion",
       "sources": [
         {
-          "kind": "trace",
-          "path": "ablation_results.json"
-        },
-        {
-          "kind": "published",
-          "label": "SDR fully-loaded rate $60/hr"
-        },
-        {
-          "kind": "published",
-          "label": "Human speed-to-lead 42 min (spec)"
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
         }
       ],
-      "derivation": "annual_savings = (sdr_hourly \u00d7 human_minutes/60 \u2212 agent_cost/task) \u00d7 leads_per_week \u00d7 50 weeks = ($42.00 \u2212 $0.0102) \u00d7 200 \u00d7 50 = $419,898.07. Agent cost from ablation_results.json method condition.",
+      "derivation": "Tenacious internal baseline numbers for top-quartile signal-grounded reply rate.",
       "recompute": {
         "command": "uv run python scripts/generate_act5.py --strict-final"
       }
     },
     {
-      "claim_id": "annualized_impact_upside",
-      "label": "Annualized labor-savings impact \u2014 upside (1 000 leads/week)",
+      "claim_id": "conversion_rates_discovery_to_proposal_range",
+      "label": "Discovery\u2192proposal conversion rate (range)",
       "value": {
-        "annual_savings_usd": 2099490.35,
-        "leads_per_week": 1000,
-        "annual_leads": 50000,
-        "net_savings_per_attempt_usd": 41.9898,
-        "labor_cost_per_attempt_usd": 42.0,
-        "agent_cost_per_attempt_usd": 0.010193
+        "range": [
+          0.3,
+          0.5
+        ]
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        }
+      ],
+      "derivation": "Tenacious internal baseline numbers for discovery-call-to-proposal conversion.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "conversion_rates_proposal_to_close_range",
+      "label": "Proposal\u2192close conversion rate (range)",
+      "value": {
+        "range": [
+          0.2,
+          0.3
+        ]
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        }
+      ],
+      "derivation": "Tenacious internal baseline numbers for proposal-to-close conversion.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "acv_talent_outsourcing_range",
+      "label": "Talent outsourcing ACV (range)",
+      "value": {
+        "range_usd": [
+          240000,
+          720000
+        ]
+      },
+      "unit": "usd",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        }
+      ],
+      "derivation": "Tenacious internal ACV range for talent outsourcing engagements.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "acv_project_consulting_range",
+      "label": "Project consulting ACV (range)",
+      "value": {
+        "range_usd": [
+          80000,
+          300000
+        ]
+      },
+      "unit": "usd",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        }
+      ],
+      "derivation": "Tenacious internal ACV range for project consulting engagements.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "tau2_published_reference_pass_at_1",
+      "label": "Published \u03c4\u00b2-Bench retail reference pass@1 (point reference)",
+      "value": 0.42,
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        }
+      ],
+      "derivation": "Voice-agent conversational pass@1 ceiling (~42%) recorded in Tenacious baseline numbers.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "annualized_revenue_impact_one_segment",
+      "label": "Annualized revenue impact \u2014 one segment only (2 discovery calls/week)",
+      "value": {
+        "segments_included": [
+          "Segment 2"
+        ],
+        "assumptions": {
+          "discovery_calls_per_week": 2,
+          "weeks_per_year": 50,
+          "discovery_to_proposal_rate_range": [
+            0.3,
+            0.5
+          ],
+          "proposal_to_close_rate_range": [
+            0.2,
+            0.3
+          ],
+          "outsourcing_acv_range_usd": [
+            240000,
+            720000
+          ],
+          "consulting_acv_range_usd": [
+            80000,
+            300000
+          ]
+        },
+        "computed": {
+          "discovery_calls_per_year": 100,
+          "proposals_per_year_range": [
+            30.0,
+            50.0
+          ],
+          "closed_deals_per_year_range": [
+            6.0,
+            15.0
+          ],
+          "annual_revenue_range_usd": [
+            1440000.0,
+            10800000.0
+          ],
+          "annual_revenue_midpoint_usd": 6120000.0
+        }
       },
       "unit": "usd_per_year",
       "sources": [
         {
-          "kind": "trace",
-          "path": "ablation_results.json"
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
         },
         {
-          "kind": "published",
-          "label": "SDR fully-loaded rate $60/hr"
-        },
-        {
-          "kind": "published",
-          "label": "Human speed-to-lead 42 min (spec)"
+          "kind": "document",
+          "path": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md"
         }
       ],
-      "derivation": "annual_savings = (sdr_hourly \u00d7 human_minutes/60 \u2212 agent_cost/task) \u00d7 leads_per_week \u00d7 50 weeks = ($42.00 \u2212 $0.0102) \u00d7 1000 \u00d7 50 = $2,099,490.35. Agent cost from ablation_results.json method condition.",
+      "derivation": "Revenue model per Tenacious Act V: discovery calls/week \u00d7 50 weeks \u2192 discovery calls/year; apply baseline conversion ranges to estimate closed deals/year; multiply by ACV range. Discovery calls/week is an explicit adoption-scenario assumption.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "annualized_revenue_impact_two_segments",
+      "label": "Annualized revenue impact \u2014 two segments (6 discovery calls/week)",
+      "value": {
+        "segments_included": [
+          "Segment 1",
+          "Segment 2"
+        ],
+        "assumptions": {
+          "discovery_calls_per_week": 6,
+          "weeks_per_year": 50,
+          "discovery_to_proposal_rate_range": [
+            0.3,
+            0.5
+          ],
+          "proposal_to_close_rate_range": [
+            0.2,
+            0.3
+          ],
+          "outsourcing_acv_range_usd": [
+            240000,
+            720000
+          ],
+          "consulting_acv_range_usd": [
+            80000,
+            300000
+          ]
+        },
+        "computed": {
+          "discovery_calls_per_year": 300,
+          "proposals_per_year_range": [
+            90.0,
+            150.0
+          ],
+          "closed_deals_per_year_range": [
+            18.0,
+            45.0
+          ],
+          "annual_revenue_range_usd": [
+            4320000.0,
+            32400000.0
+          ],
+          "annual_revenue_midpoint_usd": 18360000.0
+        }
+      },
+      "unit": "usd_per_year",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        },
+        {
+          "kind": "document",
+          "path": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md"
+        }
+      ],
+      "derivation": "Revenue model per Tenacious Act V: discovery calls/week \u00d7 50 weeks \u2192 discovery calls/year; apply baseline conversion ranges to estimate closed deals/year; multiply by ACV range. Discovery calls/week is an explicit adoption-scenario assumption.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "annualized_revenue_impact_all_four_segments",
+      "label": "Annualized revenue impact \u2014 all four segments (12 discovery calls/week)",
+      "value": {
+        "segments_included": [
+          "Segment 1",
+          "Segment 2",
+          "Segment 3",
+          "Segment 4"
+        ],
+        "assumptions": {
+          "discovery_calls_per_week": 12,
+          "weeks_per_year": 50,
+          "discovery_to_proposal_rate_range": [
+            0.3,
+            0.5
+          ],
+          "proposal_to_close_rate_range": [
+            0.2,
+            0.3
+          ],
+          "outsourcing_acv_range_usd": [
+            240000,
+            720000
+          ],
+          "consulting_acv_range_usd": [
+            80000,
+            300000
+          ]
+        },
+        "computed": {
+          "discovery_calls_per_year": 600,
+          "proposals_per_year_range": [
+            180.0,
+            300.0
+          ],
+          "closed_deals_per_year_range": [
+            36.0,
+            90.0
+          ],
+          "annual_revenue_range_usd": [
+            2880000.0,
+            64800000.0
+          ],
+          "annual_revenue_midpoint_usd": 33840000.0
+        }
+      },
+      "unit": "usd_per_year",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        },
+        {
+          "kind": "document",
+          "path": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md"
+        }
+      ],
+      "derivation": "Revenue model per Tenacious Act V: discovery calls/week \u00d7 50 weeks \u2192 discovery calls/year; apply baseline conversion ranges to estimate closed deals/year; multiply by ACV range. Discovery calls/week is an explicit adoption-scenario assumption.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "pilot_recommendation",
+      "label": "Pilot scope recommendation (30 days)",
+      "value": {
+        "segment": "Segment 2",
+        "duration_days": 30,
+        "discovery_calls_per_week_assumption": 2,
+        "weekly_budget_usd": 25,
+        "success_criterion": "\u22655 discovery calls booked with qualified Segment 2 prospects within 30 days"
+      },
+      "unit": "object",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "tenacious_sales_data/seed/baseline_numbers.md"
+        }
+      ],
+      "derivation": "Pilot fields required by Tenacious Act V. Weekly budget is a conservative cap aligned with the CPL target (\u2264 $5) and is explicitly an assumption in the memo.",
       "recompute": {
         "command": "uv run python scripts/generate_act5.py --strict-final"
       }
@@ -284,9 +555,9 @@
       "claim_id": "generic_reply_rate",
       "label": "Generic outbound reply rate (non-autoresponder)",
       "value": {
-        "reply_rate": 0.1895424836601307,
+        "reply_rate": 0.17791411042944785,
         "replied_n": 29,
-        "outbound_n": 153,
+        "outbound_n": 163,
         "population_ids": [
           "",
           "hs-prospect+gen0@example.com",
@@ -323,7 +594,7 @@
     {
       "claim_id": "competitive_gap_reply_rate_delta",
       "label": "Reply-rate delta: competitive-gap minus generic",
-      "value": 0.8104575163398693,
+      "value": 0.8220858895705522,
       "unit": "proportion",
       "sources": [
         {
@@ -343,10 +614,11 @@
       "claim_id": "stalled_thread_rate",
       "label": "Stalled-thread rate (14d no booking proxy = no booking_created)",
       "value": {
-        "stalled_rate": 0.9230769230769231,
-        "stalled_n": 48,
-        "inbound_n": 52,
+        "stalled_rate": 0.8852459016393442,
+        "stalled_n": 54,
+        "inbound_n": 61,
         "population_ids": [
+          "1001",
           "hs-prospect+cg0@example.com",
           "hs-prospect+cg10@example.com",
           "hs-prospect+cg11@example.com",
@@ -406,7 +678,7 @@
     {
       "claim_id": "cost_per_qualified_lead",
       "label": "Cost per qualified lead (USD) where qualified = booking_created",
-      "value": 0.057923491875,
+      "value": 0.033099138214285714,
       "unit": "usd_per_qualified_lead",
       "sources": [
         {
@@ -423,5 +695,88 @@
         "command": "uv run python scripts/generate_act5.py --strict-final"
       }
     }
-  ]
+  ],
+  "memo": {
+    "page_1": {
+      "title": "The Decision",
+      "sections": [
+        {
+          "id": "tau2_performance",
+          "claim_ids": [
+            "tau2_sealed_pass_at_1",
+            "day1_sealed_baseline_pass_at_1",
+            "tau2_auto_opt_sealed_pass_at_1",
+            "tau2_published_reference_pass_at_1",
+            "tau2_task_duration_p50_seconds"
+          ]
+        },
+        {
+          "id": "cpl",
+          "claim_ids": [
+            "total_cost_usd",
+            "cost_per_qualified_lead"
+          ]
+        },
+        {
+          "id": "stalled_thread_delta",
+          "claim_ids": [
+            "stalled_thread_rate",
+            "tenacious_manual_stalled_thread_baseline"
+          ]
+        },
+        {
+          "id": "competitive_gap",
+          "claim_ids": [
+            "competitive_gap_reply_rate",
+            "generic_reply_rate",
+            "competitive_gap_reply_rate_delta",
+            "top_quartile_signal_grounded_reply_rate_range"
+          ]
+        },
+        {
+          "id": "annualized_impact",
+          "claim_ids": [
+            "annualized_revenue_impact_one_segment",
+            "annualized_revenue_impact_two_segments",
+            "annualized_revenue_impact_all_four_segments"
+          ]
+        },
+        {
+          "id": "pilot",
+          "claim_ids": [
+            "pilot_recommendation"
+          ]
+        }
+      ]
+    },
+    "page_2": {
+      "title": "The Skeptic\u2019s Appendix",
+      "sections": [
+        {
+          "id": "failure_modes",
+          "claim_ids": []
+        },
+        {
+          "id": "public_signal_lossiness",
+          "claim_ids": []
+        },
+        {
+          "id": "gap_analysis_risks",
+          "claim_ids": []
+        },
+        {
+          "id": "brand_reputation_unit_econ",
+          "claim_ids": []
+        },
+        {
+          "id": "honest_failure",
+          "claim_ids": []
+        },
+        {
+          "id": "kill_switch",
+          "claim_ids": []
+        }
+      ]
+    }
+  }
 }
