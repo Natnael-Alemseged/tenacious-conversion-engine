@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     sms_suppression_path: str = "./data/sms_suppression.json"
     bench_summary_path: str = "./tenacious_sales_data/seed/bench_summary.json"
 
+    # Conversation DB (Postgres conversation memory)
+    conversation_db_enabled: bool = False
+    postgres_dsn: str = ""
+    conversation_db_schema: str = "public"
+    neon_postgres_url: str = ""
+
     model_config = SettingsConfigDict(
         extra="ignore",
     )
@@ -72,6 +78,10 @@ class Settings(BaseSettings):
                 or self.hubspot_personal_access_key
                 or self.hubspot_developer_api_key
             )
+
+        # Back-compat / convenience: allow NEON_POSTGRES_URL to act as POSTGRES_DSN.
+        if not self.postgres_dsn:
+            self.postgres_dsn = self.neon_postgres_url
 
     @property
     def openrouter_key_pool(self) -> list[str]:
