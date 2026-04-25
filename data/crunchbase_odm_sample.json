@@ -1,0 +1,83 @@
+[
+  {
+    "uuid": "sample-odm-001",
+    "name": "SynthCo",
+    "domain": "synthco.example",
+    "homepage_url": "https://synthco.example",
+    "country_code": "US",
+    "num_employees_enum": "c_00101_00250",
+    "categories": [
+      "analytics",
+      "python",
+      "snowflake",
+      "data-engineering"
+    ],
+    "funding_rounds": [
+      {
+        "announced_on": "2026-04-01T00:00:00Z",
+        "investment_type": "series_a",
+        "money_raised_usd": 8000000
+      }
+    ],
+    "ai_maturity_score": 2
+  },
+  {
+    "uuid": "sample-odm-peer-001",
+    "name": "PeerCo One",
+    "domain": "peerco1.example",
+    "homepage_url": "https://peerco1.example",
+    "categories": [
+      "analytics",
+      "python",
+      "snowflake"
+    ],
+    "ai_maturity_score": 3
+  },
+  {
+    "uuid": "sample-odm-peer-002",
+    "name": "PeerCo Two",
+    "domain": "peerco2.example",
+    "homepage_url": "https://peerco2.example",
+    "categories": [
+      "analytics",
+      "python",
+      "snowflake"
+    ],
+    "ai_maturity_score": 2
+  }
+]
+[
+  {
+    "uuid": "sample-odm-001",
+    "name": "SynthCo",
+    "domain": "synthco.example",
+    "homepage_url": "https://synthco.example",
+    "country_code": "US",
+    "num_employees_enum": "c_00101_00250",
+    "categories": ["analytics", "python", "snowflake", "data-engineering"],
+    "funding_rounds": [
+      {
+        "announced_on": "2026-04-01T00:00:00Z",
+        "investment_type": "series_a",
+        "money_raised_usd": 8000000
+      }
+    ],
+    "ai_maturity_score": 2
+  },
+  {
+    "uuid": "sample-odm-peer-001",
+    "name": "PeerCo One",
+    "domain": "peerco1.example",
+    "homepage_url": "https://peerco1.example",
+    "categories": ["analytics", "python", "snowflake"],
+    "ai_maturity_score": 3
+  },
+  {
+    "uuid": "sample-odm-peer-002",
+    "name": "PeerCo Two",
+    "domain": "peerco2.example",
+    "homepage_url": "https://peerco2.example",
+    "categories": ["analytics", "python", "snowflake"],
+    "ai_maturity_score": 2
+  }
+]
