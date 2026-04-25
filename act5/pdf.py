@@ -17,7 +17,9 @@ def _pdf_page_stream(lines: list[str]) -> bytes:
     ops: list[str] = ["BT", "/F1 12 Tf"]
     for line in lines:
         safe = _escape_pdf_text(line)[:160]
-        ops.append(f"72 {y} Td ({safe}) Tj")
+        # Use absolute positioning per line.
+        # Td is relative and would drift off-page across many lines.
+        ops.append(f"1 0 0 1 72 {y} Tm ({safe}) Tj")
         y -= 16
     ops.append("ET")
     return ("\n".join(ops) + "\n").encode("utf-8")
