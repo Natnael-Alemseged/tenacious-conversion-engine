@@ -15,3 +15,6 @@ hubspot.config.yml
 trace_log.jsonl
 score_log.json
 .DS_Store
+
+# Generated artifacts (do not commit)
+artifacts/
