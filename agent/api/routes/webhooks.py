@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
+from act5.outbound_events import append_policy_event, now_iso
 from agent.core.config import settings
 from agent.integrations.africastalking_sms import AfricasTalkingSendError
 from agent.integrations.hubspot import HubSpotMcpError
@@ -487,7 +488,17 @@ async def inbound_sms(request: Request) -> dict[str, str]:
     store = _suppression_store()
 
     if message in STOP_KEYWORDS:
-        store.suppress(event.from_number)
+        store.suppress(event.from_number, reason="stop_keyword")
+        append_policy_event(
+            {
+                "event_type": "sms_opt_out",
+                "decided_at": now_iso(),
+                "channel": "sms",
+                "to_phone": event.from_number[-4:],
+                "keyword": message,
+                "action": "suppressed",
+            }
+        )
         if conversations.enabled:
             resolved = conversations.resolve_thread_for_sms(from_phone=event.from_number)
             if resolved:
