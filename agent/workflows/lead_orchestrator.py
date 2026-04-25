@@ -1617,6 +1617,20 @@ class LeadOrchestrator:
                     exc=exc,
                 )
                 raise
+            append_outbound_event(
+                {
+                    "event_type": "outbound_sms",
+                    "sent_at": now_iso(),
+                    "channel": "sms",
+                    "intended_to": to_phone[-4:],
+                    "routed_to": routed_to[-4:],
+                    "outbound_variant": "warm_lead_sms",
+                    "thread_id": thread_id or "",
+                    "outbound_mode": outbound_audit["outbound_mode"],
+                    "company_name": company_name,
+                    "crunchbase_id": crunchbase_id or "",
+                }
+            )
             _log.info(
                 "send_warm_lead_sms",
                 extra=_workflow_log_extra(
