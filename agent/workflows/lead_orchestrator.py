@@ -24,6 +24,11 @@ from agent.integrations.langfuse import LangfuseClient
 from agent.integrations.resend_email import ResendClient, ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
+from agent.workflows.channel_handoff import (
+    OutboundRoutingConfig,
+    should_send_email_reply,
+    should_send_sms_reply,
+)
 
 DownstreamEventHandler = (
     Callable[[str, dict[str, Any], InboundEmailEvent | InboundSmsEvent], None] | None
@@ -310,6 +315,13 @@ def _booking_start_from_text(text: str) -> str | None:
     return start
 
 
+def _calcom_booking_url() -> str:
+    username = (settings.calcom_username or "").strip()
+    if not username:
+        return ""
+    return f"https://cal.com/{username}"
+
+
 def _signal_summary_from_brief(brief: HiringSignalBrief) -> str:
     parts: list[str] = []
     if brief.signals.funding.data:
@@ -364,6 +376,12 @@ def _build_inbound_sms_reply(*, event: InboundSmsEvent) -> str:
     focus = _extract_hiring_focus(event.text)
     lowered = event.text.lower()
     if _booking_intent(event.text):
+        booking_url = _calcom_booking_url()
+        if booking_url:
+            return (
+                "Happy to help. You can pick a slot here: "
+                f"{booking_url}. If you'd rather, share a preferred time + timezone overlap."
+            )
         return (
             "Happy to help. Share a preferred time, timezone overlap, and rough role count, "
             "or say 'schedule' and I can send next-step options."
@@ -578,9 +596,17 @@ class LeadOrchestrator:
                     span.update(output=result)
                 hubspot_contact_id = str(result.get("id") or "")
                 bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
-                can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
                 exploratory_reply_ok = brief.icp_segment == 0 or brief.segment_confidence < 0.6
-                reply_gate_passed = bench_gate_passed or exploratory_reply_ok
+                routing = OutboundRoutingConfig(
+                    outbound_enabled=settings.outbound_enabled,
+                    outbound_sink_email=settings.outbound_sink_email or "",
+                    outbound_sink_phone=settings.outbound_sink_phone or "",
+                )
+                reply_decision = should_send_email_reply(
+                    routing=routing,
+                    bench_gate_passed=bench_gate_passed,
+                    exploratory_reply_ok=exploratory_reply_ok,
+                )
                 booking_result: dict[str, Any] | None = None
                 if booking_requested and requested_booking_start and bench_gate_passed:
                     booking_result = self.book_discovery_call(
@@ -633,7 +659,7 @@ class LeadOrchestrator:
                             reply_reason=booking_reason,
                         ),
                     )
-                if can_route_reply and reply_gate_passed:
+                if reply_decision.action == "send":
                     reply_subject, reply_html, reply_text = _build_inbound_email_reply(
                         event=event,
                         company_name=brief.company_name,
@@ -678,14 +704,9 @@ class LeadOrchestrator:
                         ),
                     )
                 else:
-                    reason = (
-                        "bench_to_brief_gate_failed"
-                        if not reply_gate_passed
-                        else "outbound_disabled_without_sink"
-                    )
                     result["reply"] = {
                         "status": "skipped",
-                        "reason": reason,
+                        "reason": reply_decision.reason,
                     }
                     _log.info(
                         "handle_email",
@@ -700,7 +721,7 @@ class LeadOrchestrator:
                             requested_booking_start=requested_booking_start or "",
                             booking_created=booking_result is not None,
                             reply_status="skipped",
-                            reply_reason=reason,
+                            reply_reason=reply_decision.reason,
                         ),
                     )
                 result["enrichment"] = {
@@ -850,8 +871,17 @@ class LeadOrchestrator:
                     raise
                 if span:
                     span.update(output=result)
-                can_route_reply = settings.outbound_enabled or settings.outbound_sink_phone
-                if can_route_reply:
+                routing = OutboundRoutingConfig(
+                    outbound_enabled=settings.outbound_enabled,
+                    outbound_sink_email=settings.outbound_sink_email or "",
+                    outbound_sink_phone=settings.outbound_sink_phone or "",
+                )
+                sms_decision = should_send_sms_reply(
+                    routing=routing,
+                    prior_email_replied=True,
+                    sms_suppressed=False,
+                )
+                if sms_decision.action == "send":
                     reply_text = _build_inbound_sms_reply(event=event)
                     reply_result = self.send_warm_lead_sms(
                         to_phone=event.from_number,
@@ -866,7 +896,7 @@ class LeadOrchestrator:
                 else:
                     result["reply"] = {
                         "status": "skipped",
-                        "reason": "outbound_disabled_without_sink",
+                        "reason": sms_decision.reason,
                     }
                 self._emit_reply_handler(channel="sms", result=result, event=event)
                 _log.info(

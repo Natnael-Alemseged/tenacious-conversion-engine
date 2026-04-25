@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from agent.models.webhooks import InboundSmsEvent
 from agent.workflows.lead_orchestrator import LeadOrchestrator, _build_subject
 
 
@@ -88,3 +89,30 @@ def test_overall_confidence_used_when_segment_confidence_absent() -> None:
             bench_to_brief_gate_passed=True,
         )
     assert "Based on the signals" in captured["html"]
+
+
+def test_inbound_sms_booking_intent_includes_calcom_link_when_configured() -> None:
+    orc = _make_orchestrator()
+    orc.sms.send_sms.return_value = {"ok": True}
+    orc.hubspot.upsert_contact.return_value = {"id": "hs-1"}
+
+    event = InboundSmsEvent(
+        from_number="+251911000000",
+        to="12345",
+        text="Can we schedule a call?",
+        date="2026-01-01 00:00:00",
+        message_id="sms-1",
+    )
+
+    with patch("agent.workflows.lead_orchestrator.settings.calcom_username", "tenacious-demo"):
+        with patch("agent.workflows.lead_orchestrator.settings.outbound_enabled", False):
+            with patch(
+                "agent.workflows.lead_orchestrator.settings.outbound_sink_phone",
+                "+15555550123",
+            ):
+                result = orc.handle_sms(event)
+
+    assert result["reply"] != {"status": "skipped", "reason": "outbound_disabled_without_sink"}
+    assert orc.sms.send_sms.call_count == 1
+    sent_message = orc.sms.send_sms.call_args.kwargs.get("message", "")
+    assert "https://cal.com/tenacious-demo" in sent_message
