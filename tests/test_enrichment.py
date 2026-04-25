@@ -461,3 +461,15 @@ def test_capacity_check_blocks_lead_time_p012() -> None:
 def test_capacity_check_passes_valid_request() -> None:
     result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=2)
     assert result["feasible"]
+
+
+def test_capacity_check_unknown_stack_returns_clear_reason() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="rust", requested_count=1)
+    assert not result["feasible"]
+    assert "not present" in result["reason"]
+
+
+def test_capacity_check_unknown_seniority_blocks() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=1, seniority="principal")
+    assert not result["feasible"]
+    assert "not recognised" in result["reason"].lower() or "recognised" in result["reason"]

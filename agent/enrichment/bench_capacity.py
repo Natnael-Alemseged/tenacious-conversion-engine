@@ -27,7 +27,15 @@ def check_capacity(
       available_seniority: int (available at requested seniority, or -1 if not checked)
     """
     stacks = bench.get("stacks") or {}
-    stack_data = stacks.get(stack.strip().lower()) or {}
+    stack_key = stack.strip().lower()
+    stack_data = stacks.get(stack_key)
+    if stack_data is None:
+        return {
+            "feasible": False,
+            "reason": f"Stack '{stack}' is not present in the bench.",
+            "available": 0,
+            "available_seniority": -1,
+        }
     available = int(stack_data.get("available_engineers") or 0)
     note = str(stack_data.get("note") or "").lower()
     time_to_deploy = int(stack_data.get("time_to_deploy_days") or 0)
@@ -56,19 +64,28 @@ def check_capacity(
     # Check seniority (P-011)
     if seniority:
         seniority_key = _SENIORITY_KEYS.get(seniority.lower())
-        if seniority_key:
-            seniority_mix = stack_data.get("seniority_mix") or {}
-            avail_seniority = int(seniority_mix.get(seniority_key) or 0)
-            if avail_seniority < requested_count:
-                return {
-                    "feasible": False,
-                    "reason": (
-                        f"Stack '{stack}' has {avail_seniority} {seniority} engineers, "
-                        f"but {requested_count} were requested."
-                    ),
-                    "available": available,
-                    "available_seniority": avail_seniority,
-                }
+        if seniority_key is None:
+            return {
+                "feasible": False,
+                "reason": (
+                    f"Seniority level '{seniority}' is not recognised. "
+                    f"Known levels: {list(_SENIORITY_KEYS)}."
+                ),
+                "available": available,
+                "available_seniority": -1,
+            }
+        seniority_mix = stack_data.get("seniority_mix") or {}
+        avail_seniority = int(seniority_mix.get(seniority_key) or 0)
+        if avail_seniority < requested_count:
+            return {
+                "feasible": False,
+                "reason": (
+                    f"Stack '{stack}' has {avail_seniority} {seniority} engineers, "
+                    f"but {requested_count} were requested."
+                ),
+                "available": available,
+                "available_seniority": avail_seniority,
+            }
 
     # Check lead time (P-012)
     if lead_days is not None and time_to_deploy > lead_days:
