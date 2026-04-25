@@ -9,6 +9,7 @@ from agent.enrichment.artifacts import (
     write_hiring_signal_brief,
 )
 from agent.enrichment.bench_capacity import check_capacity
+from agent.enrichment.competitor_gap import find_competitors
 from agent.enrichment.layoffs import _approximate_headcount
 from agent.enrichment.layoffs import check as layoffs_check
 from agent.enrichment.pipeline import _classify_segment, run
@@ -473,3 +474,51 @@ def test_capacity_check_unknown_seniority_blocks() -> None:
     result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=1, seniority="principal")
     assert not result["feasible"]
     assert "not recognised" in result["reason"].lower() or "recognised" in result["reason"]
+
+
+# ---------------------------------------------------------------------------
+# find_competitors — P-031 live ODM sector-peer lookup
+# ---------------------------------------------------------------------------
+
+
+def test_find_competitors_returns_sector_peers() -> None:
+    odm_data = [
+        {
+            "name": "PeerCo",
+            "categories": ["Artificial Intelligence", "Machine Learning"],
+        },
+        {
+            "name": "UnrelatedCo",
+            "categories": ["Real Estate"],
+        },
+    ]
+    peers = find_competitors(
+        prospect_name="TestCo",
+        categories=["Artificial Intelligence"],
+        odm_data=odm_data,
+    )
+    names = [p["name"] for p in peers]
+    assert "PeerCo" in names
+    assert "UnrelatedCo" not in names
+
+
+def test_find_competitors_excludes_prospect() -> None:
+    odm_data = [
+        {"name": "TestCo", "categories": ["AI"]},
+        {"name": "OtherCo", "categories": ["AI"]},
+    ]
+    peers = find_competitors(
+        prospect_name="TestCo",
+        categories=["AI"],
+        odm_data=odm_data,
+    )
+    assert all(p["name"] != "TestCo" for p in peers)
+
+
+def test_find_competitors_empty_when_no_match() -> None:
+    peers = find_competitors(
+        prospect_name="TestCo",
+        categories=["Fintech"],
+        odm_data=[{"name": "AICo", "categories": ["Machine Learning"]}],
+    )
+    assert peers == []
