@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     layoffs_fyi_path: str = "./data/layoffs_fyi.csv"
     sms_suppression_path: str = "./data/sms_suppression.json"
     bench_summary_path: str = "./tenacious_sales_data/seed/bench_summary.json"
+    hiring_velocity_store_path: str = "./data/hiring_velocity_snapshots.jsonl"
 
     model_config = SettingsConfigDict(
         extra="ignore",
