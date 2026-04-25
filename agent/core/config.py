@@ -58,8 +58,6 @@ class Settings(BaseSettings):
     bench_summary_path: str = "./tenacious_sales_data/seed/bench_summary.json"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         extra="ignore",
     )
 
@@ -95,4 +93,6 @@ class Settings(BaseSettings):
         return keys
 
 
-settings = Settings()
+# Only the module-level singleton reads `.env` by default.
+# Tests can instantiate `Settings(...)` without unintentionally pulling local secrets.
+settings = Settings(_env_file=".env", _env_file_encoding="utf-8")
