@@ -52,6 +52,7 @@ def score(signals: dict) -> tuple[int, str, float]:
     if "ai_roles_fraction" in signals:
         signals_present += 1
 
+    fork_only = signals.get("github_fork_only") is True
     for key in (
         "named_ai_leadership",
         "github_activity",
@@ -61,6 +62,9 @@ def score(signals: dict) -> tuple[int, str, float]:
     ):
         val = signals.get(key)
         if val is True:
+            if key == "github_activity" and fork_only:
+                # Forks, stars, and cloned repos don't constitute genuine AI activity
+                continue
             weighted_score += _WEIGHTS[key]
             notes.append(key.replace("_", " "))
             signals_present += 1

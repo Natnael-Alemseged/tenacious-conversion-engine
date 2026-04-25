@@ -8,7 +8,11 @@ from agent.enrichment.artifacts import (
     write_discovery_call_context_brief,
     write_hiring_signal_brief,
 )
-from agent.enrichment.pipeline import run
+from agent.enrichment.bench_capacity import check_capacity
+from agent.enrichment.competitor_gap import find_competitors
+from agent.enrichment.layoffs import _approximate_headcount
+from agent.enrichment.layoffs import check as layoffs_check
+from agent.enrichment.pipeline import _classify_segment, run
 from agent.enrichment.schemas import HiringSignalBrief
 
 # ---------------------------------------------------------------------------
@@ -197,6 +201,18 @@ def test_write_hiring_signal_brief_emits_public_schema_shape(tmp_path, monkeypat
         "agent.enrichment.pipeline.layoffs.settings.layoffs_fyi_path", str(layoffs_csv)
     )
     monkeypatch.setattr("agent.enrichment.pipeline.settings.bench_summary_path", str(bench))
+    # Segment 1 now requires open_roles >= 5 — mock the scraper so this test still validates
+    # the segment_1_series_a_b path without a live careers page.
+    monkeypatch.setattr(
+        "agent.enrichment.pipeline.job_posts.scrape",
+        lambda url: {
+            "url": url,
+            "open_roles": 6,
+            "ai_adjacent_roles": 1,
+            "ai_roles_fraction": 0.167,
+            "role_titles": [],
+        },
+    )
 
     output_path = tmp_path / "hiring_signal_brief.json"
     write_hiring_signal_brief(
@@ -297,3 +313,212 @@ def test_write_discovery_call_context_brief_emits_required_sections(tmp_path, mo
     assert "## 3. Competitor gap findings" in content
     assert "## 4. Bench-to-brief match" in content
     assert "## 10. Agent confidence and unknowns" in content
+
+
+# ---------------------------------------------------------------------------
+# _classify_segment — ICP priority rules
+# ---------------------------------------------------------------------------
+
+
+def _classify(
+    *, funding=None, layoff_events=None, leader_changes=None, ai_score=0, open_roles=0
+) -> int:
+    return _classify_segment(
+        funding=funding,
+        layoff_events=layoff_events,
+        leader_changes=leader_changes,
+        ai_score=ai_score,
+        open_roles=open_roles,
+    )
+
+
+def test_layoff_overrides_funding_p001() -> None:
+    funding = [{"investment_type": "series_b", "money_raised_usd": 18_000_000}]
+    layoffs = [{"company": "TestCo", "laid_off_count": "35", "percentage": "22"}]
+    seg = _classify(funding=funding, layoff_events=layoffs, open_roles=10)
+    assert seg == 2, f"Expected Segment 2 (layoff > funding), got {seg}"
+
+
+def test_funding_with_enough_open_roles_is_segment_1_p004() -> None:
+    funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
+    seg = _classify(funding=funding, open_roles=5)
+    assert seg == 1
+
+
+def test_funding_with_zero_open_roles_abstains_p004() -> None:
+    funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
+    seg = _classify(funding=funding, open_roles=0)
+    assert seg == 0, f"Segment 1 must not fire with 0 open roles, got {seg}"
+
+
+def test_approximate_headcount_enum() -> None:
+    assert _approximate_headcount("c_00051_00100") == 75
+    assert _approximate_headcount("c_00101_00250") == 175
+    assert _approximate_headcount(None) is None
+    assert _approximate_headcount("unknown_value") is None
+
+
+def test_layoff_percentage_fallback_computed_p027(tmp_path) -> None:
+    csv_content = "Company,Date,Laid_Off_Count,Percentage\nTestCo,2026-03-01,50,\n"
+    csv_file = tmp_path / "layoffs.csv"
+    csv_file.write_text(csv_content)
+    results = layoffs_check("TestCo", path=str(csv_file), employee_count_enum="c_00251_00500")
+    assert results[0]["percentage"] != ""
+    pct = float(results[0]["percentage"])
+    assert 10.0 < pct < 20.0, f"Expected ~13%, got {pct}"
+    assert results[0].get("percentage_source") == "computed"
+
+
+def test_layoff_percentage_preserved_when_present(tmp_path) -> None:
+    csv_content = "Company,Date,Laid_Off_Count,Percentage\nTestCo,2026-03-01,50,22\n"
+    csv_file = tmp_path / "layoffs.csv"
+    csv_file.write_text(csv_content)
+    results = layoffs_check("TestCo", path=str(csv_file), employee_count_enum="c_00251_00500")
+    assert results[0]["percentage"] == "22"
+    assert results[0].get("percentage_source") == "reported"
+
+
+def test_github_fork_only_does_not_inflate_score_p028() -> None:
+    """github_activity=True with github_fork_only=True must not raise score above baseline."""
+    score_forks, _, _ = score({"github_activity": True, "github_fork_only": True})
+    score_none, _, _ = score({})
+    assert score_forks == score_none, (
+        f"Fork-only activity should not inflate score: {score_none} → {score_forks}"
+    )
+
+
+def test_github_original_commits_inflate_score_p028() -> None:
+    """github_activity=True without github_fork_only raises score."""
+    score_original, _, _ = score({"github_activity": True})
+    score_none, _, _ = score({})
+    assert score_original > score_none
+
+
+def test_github_fork_only_does_not_count_toward_confidence() -> None:
+    _, _, conf_forks = score({"github_activity": True, "github_fork_only": True})
+    _, _, conf_none = score({})
+    assert conf_forks == conf_none
+
+
+# ---------------------------------------------------------------------------
+# bench_capacity.check_capacity — P-009 through P-012
+# ---------------------------------------------------------------------------
+
+_SAMPLE_BENCH = {
+    "stacks": {
+        "go": {
+            "available_engineers": 3,
+            "seniority_mix": {"junior_0_2_yrs": 1, "mid_2_4_yrs": 1, "senior_4_plus_yrs": 1},
+            "time_to_deploy_days": 14,
+            "note": "",
+        },
+        "ml": {
+            "available_engineers": 5,
+            "seniority_mix": {"junior_0_2_yrs": 2, "mid_2_4_yrs": 2, "senior_4_plus_yrs": 1},
+            "time_to_deploy_days": 10,
+            "note": "",
+        },
+        "infra": {
+            "available_engineers": 4,
+            "seniority_mix": {"junior_0_2_yrs": 1, "mid_2_4_yrs": 2, "senior_4_plus_yrs": 1},
+            "time_to_deploy_days": 14,
+            "note": "",
+        },
+        "fullstack_nestjs": {
+            "available_engineers": 2,
+            "seniority_mix": {"junior_0_2_yrs": 0, "mid_2_4_yrs": 2, "senior_4_plus_yrs": 0},
+            "time_to_deploy_days": 14,
+            "note": "Currently committed on the Modo Compass engagement through Q3 2026.",
+        },
+    }
+}
+
+
+def test_capacity_check_blocks_overcount_p009() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=10)
+    assert not result["feasible"]
+    assert result["available"] == 3
+    assert "10" in result["reason"] or "3" in result["reason"]
+
+
+def test_capacity_check_blocks_commitment_note_p010() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="fullstack_nestjs", requested_count=1)
+    assert not result["feasible"]
+    assert "committed" in result["reason"].lower() or "Q3 2026" in result["reason"]
+
+
+def test_capacity_check_blocks_seniority_shortfall_p011() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="ml", requested_count=2, seniority="senior")
+    assert not result["feasible"]
+    assert result["available_seniority"] == 1
+
+
+def test_capacity_check_blocks_lead_time_p012() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="infra", requested_count=1, lead_days=7)
+    assert not result["feasible"]
+    assert "14" in result["reason"] or "lead" in result["reason"].lower()
+
+
+def test_capacity_check_passes_valid_request() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=2)
+    assert result["feasible"]
+
+
+def test_capacity_check_unknown_stack_returns_clear_reason() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="rust", requested_count=1)
+    assert not result["feasible"]
+    assert "not present" in result["reason"]
+
+
+def test_capacity_check_unknown_seniority_blocks() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=1, seniority="principal")
+    assert not result["feasible"]
+    assert "not recognised" in result["reason"].lower() or "recognised" in result["reason"]
+
+
+# ---------------------------------------------------------------------------
+# find_competitors — P-031 live ODM sector-peer lookup
+# ---------------------------------------------------------------------------
+
+
+def test_find_competitors_returns_sector_peers() -> None:
+    odm_data = [
+        {
+            "name": "PeerCo",
+            "categories": ["Artificial Intelligence", "Machine Learning"],
+        },
+        {
+            "name": "UnrelatedCo",
+            "categories": ["Real Estate"],
+        },
+    ]
+    peers = find_competitors(
+        prospect_name="TestCo",
+        categories=["Artificial Intelligence"],
+        odm_data=odm_data,
+    )
+    names = [p["name"] for p in peers]
+    assert "PeerCo" in names
+    assert "UnrelatedCo" not in names
+
+
+def test_find_competitors_excludes_prospect() -> None:
+    odm_data = [
+        {"name": "TestCo", "categories": ["AI"]},
+        {"name": "OtherCo", "categories": ["AI"]},
+    ]
+    peers = find_competitors(
+        prospect_name="TestCo",
+        categories=["AI"],
+        odm_data=odm_data,
+    )
+    assert all(p["name"] != "TestCo" for p in peers)
+
+
+def test_find_competitors_empty_when_no_match() -> None:
+    peers = find_competitors(
+        prospect_name="TestCo",
+        categories=["Fintech"],
+        odm_data=[{"name": "AICo", "categories": ["Machine Learning"]}],
+    )
+    assert peers == []

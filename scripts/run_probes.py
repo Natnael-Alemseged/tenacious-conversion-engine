@@ -56,40 +56,25 @@ def _record(
 
 
 def probe_P001() -> tuple[int, list[str], list[str]]:
-    """Layoff+funding → should be Segment 2, pipeline assigns Segment 1."""
+    """Layoff+funding → must be Segment 2, not Segment 1."""
+    from agent.enrichment.pipeline import _classify_segment
 
-    # Mock data: funding 60 days ago + layoff 45 days ago
-    now = datetime.now(UTC)
-    mock_funding = [
-        {
-            "investment_type": "series_b",
-            "money_raised_usd": 18_000_000,
-            "announced_on": (now - timedelta(days=60)).isoformat(),
-        }
-    ]
-    mock_layoffs = [
-        {
-            "company": "NovaCure Analytics",
-            "date": (now - timedelta(days=45)).isoformat(),
-            "laid_off_count": "35",
-            "percentage": "22",
-        }
-    ]
+    mock_funding = [{"investment_type": "series_b", "money_raised_usd": 18_000_000}]
+    mock_layoffs = [{"company": "NovaCure Analytics", "laid_off_count": "35", "percentage": "22"}]
 
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        # Simulate the pipeline classification logic directly
-        icp_segment = 0
-        if mock_funding:
-            icp_segment = 1  # Bug: funding check is first, no layoff override
-        elif mock_layoffs:
-            icp_segment = 2
-        # Correct logic would be: if layoffs AND funding → Segment 2
-        expected = 2
-        if icp_segment != expected:
+        seg = _classify_segment(
+            funding=mock_funding,
+            layoff_events=mock_layoffs,
+            leader_changes=None,
+            ai_score=0,
+            open_roles=10,
+        )
+        if seg != 2:
             triggered += 1
-            details.append(f"assigned segment={icp_segment}, expected={expected}")
+            details.append(f"Expected segment=2, got segment={seg}")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
@@ -141,26 +126,29 @@ def probe_P003() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P004() -> tuple[int, list[str], list[str]]:
-    """Zero open roles passes Segment 1 filter (pipeline doesn't check open_roles)."""
-    triggered, trace_ids, details = 0, [], []
-    now = datetime.now(UTC)
-    mock_funding = [
-        {
-            "investment_type": "series_a",
-            "money_raised_usd": 9_000_000,
-            "announced_on": (now - timedelta(days=60)).isoformat(),
-        }
-    ]
-    open_roles = 0
+    """Zero open roles must NOT qualify for Segment 1."""
+    from agent.enrichment.pipeline import _classify_segment
 
+    mock_funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
+    triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
+        # Check 1: zero open roles must not get segment 1
         tid = _trace_id()
-        # Simulate pipeline: assigns Segment 1 if funding exists, regardless of open_roles
-        icp_segment = 1 if mock_funding else 0
-        # ICP definition: Segment 1 requires "at least five open engineering roles"
-        if icp_segment == 1 and open_roles < 5:
+        seg_zero = _classify_segment(
+            funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=0
+        )
+        if seg_zero == 1:
             triggered += 1
-            details.append(f"Segment 1 assigned with open_roles={open_roles} (threshold: 5)")
+            details.append("Segment 1 assigned with 0 open roles (expected 0)")
+        trace_ids.append(tid)
+        # Check 2: five open roles must get segment 1
+        tid = _trace_id()
+        seg_five = _classify_segment(
+            funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=5
+        )
+        if seg_five != 1:
+            triggered += 1
+            details.append(f"Segment 1 not assigned with 5 open roles (got {seg_five})")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
@@ -290,70 +278,68 @@ def _load_real_bench() -> dict:
 
 
 def probe_P009() -> tuple[int, list[str], list[str]]:
-    """Bench has 3 Go engineers; prospect requests 10."""
+    """Capacity check blocks 10 Go engineers when bench has 3."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        go_available = bench.get("stacks", {}).get("go", {}).get("available_engineers", 0)
-        requested = 10
-        # The failure mode: no guard prevents claiming capacity > available
-        if go_available < requested:
-            # This is the condition that should block the commitment — confirm it exists
-            # "triggered" means the gap exists and no guard is implemented in reply generation
+        result = check_capacity(bench, stack="go", requested_count=10)
+        if result["feasible"]:
             triggered += 1
-            details.append(f"go available={go_available} < requested={requested}; no reply guard")
+            details.append(
+                f"check_capacity returned feasible=True for go×10 (bench has {result['available']})"
+            )
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
 
 def probe_P010() -> tuple[int, list[str], list[str]]:
-    """NestJS engineers committed through Q3 2026 — availability note should block."""
+    """Capacity check blocks NestJS when commitment note is present."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        nestjs = bench.get("stacks", {}).get("fullstack_nestjs", {})
-        available = nestjs.get("available_engineers", 0)
-        note = nestjs.get("note", "")
-        # Triggered if: engineers appear available in count but are committed
-        if available > 0 and "committed" in note.lower():
+        result = check_capacity(bench, stack="fullstack_nestjs", requested_count=1)
+        if result["feasible"]:
             triggered += 1
-            details.append(f"NestJS shows {available} available but note='{note[:60]}...'")
+            details.append("NestJS capacity shows feasible despite commitment note")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
 
 def probe_P011() -> tuple[int, list[str], list[str]]:
-    """ML bench has 1 senior engineer; prospect requests 2."""
+    """Capacity check blocks 2 senior ML engineers when bench has 1."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        ml = bench.get("stacks", {}).get("ml", {})
-        senior_available = ml.get("seniority_mix", {}).get("senior_4_plus_yrs", 0)
-        requested_senior = 2
-        if senior_available < requested_senior:
+        result = check_capacity(bench, stack="ml", requested_count=2, seniority="senior")
+        if result["feasible"]:
             triggered += 1
-            details.append(f"ML senior available={senior_available} < requested={requested_senior}")
+            avail = result["available_seniority"]
+            details.append(f"ML senior capacity shows feasible (available_seniority={avail})")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
 
 def probe_P012() -> tuple[int, list[str], list[str]]:
-    """Infra engineers have 14-day lead time; prospect requests start in 7 days."""
+    """Capacity check blocks infra when lead time is 14 days but 7 days requested."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        infra = bench.get("stacks", {}).get("infra", {})
-        lead_time = infra.get("time_to_deploy_days", 0)
-        requested_days = 7
-        if lead_time > requested_days:
+        result = check_capacity(bench, stack="infra", requested_count=1, lead_days=7)
+        if result["feasible"]:
             triggered += 1
-            details.append(
-                f"Infra time_to_deploy={lead_time} days > requested={requested_days} days"
-            )
+            details.append("Infra capacity shows feasible with 7-day lead (bench requires 14)")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
@@ -365,13 +351,8 @@ def probe_P012() -> tuple[int, list[str], list[str]]:
 
 def probe_P015() -> tuple[int, list[str], list[str]]:
     """Subject lines from the template — check length ≤ 60 chars."""
-    _subjects = {
-        0: "{company}: quick thought",
-        1: "{company}: scaling after your recent raise",
-        2: "{company}: doing more with your current team",
-        3: "{company}: working with new technical leadership",
-        4: "{company}: closing the AI capability gap",
-    }
+    from agent.workflows.lead_orchestrator import _SUBJECT_SUFFIXES, _build_subject
+
     test_companies = [
         "Acme",
         "DataBridge Analytics Corporation",
@@ -380,9 +361,9 @@ def probe_P015() -> tuple[int, list[str], list[str]]:
     ]
     triggered, trace_ids, details = 0, [], []
     for company in test_companies:
-        for seg, template in _subjects.items():
+        for seg in _SUBJECT_SUFFIXES:
             tid = _trace_id()
-            subject = template.replace("{company}", company)
+            subject = _build_subject(company, seg)
             if len(subject) > 60:
                 triggered += 1
                 details.append(
@@ -459,51 +440,50 @@ def probe_P017() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P027() -> tuple[int, list[str], list[str]]:
-    """layoffs.check() returns null percentage when CSV field is empty."""
-    from agent.enrichment.layoffs import _PCT_COLS, _col
+    """Layoff percentage fallback is computed from headcount when CSV field is blank."""
+    import os
+    import tempfile
 
-    # Simulate a CSV row where percentage is blank
-    test_rows = [
-        {"Company": "TestCo", "Date": "2026-03-01", "Laid_Off_Count": "50", "Percentage": ""},
-        {"Company": "TestCo", "Date": "2026-03-01", "Laid_Off_Count": "50", "Percentage": "null"},
-        {"Company": "TestCo", "Date": "2026-03-01", "Laid_Off_Count": "50"},
-    ]
+    from agent.enrichment.layoffs import check as layoffs_check
+
+    csv_content = (
+        "Company,Date,Laid_Off_Count,Percentage\nTestCo,2026-03-01,50,\nTestCo,2026-03-01,50,null\n"
+    )
     triggered, trace_ids, details = 0, [], []
-    for row in test_rows:
-        tid = _trace_id()
-        pct = _col(row, _PCT_COLS)
-        # The pipeline passes through raw string — downstream code must handle empty/null
-        # Probe confirms the empty string is returned (not computed from headcount)
-        if pct not in ("", "null", None):
-            triggered += 1
-            details.append(f"Row {row} → percentage={pct!r} (expected empty/null)")
-        else:
-            # This is the data gap: no headcount-based fallback computed
-            # Mark as triggered to flag the missing guard
-            triggered += 1
-            details.append(
-                f"percentage='{pct}' is not computed from headcount "
-                f"(laid_off_count={row.get('Laid_Off_Count')}) — overclaim risk confirmed"
-            )
-        trace_ids.append(tid)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_content)
+        tmp = f.name
+    try:
+        for _ in range(TRIALS):
+            tid = _trace_id()
+            results = layoffs_check("TestCo", path=tmp, employee_count_enum="c_00251_00500")
+            for r in results:
+                pct = r.get("percentage", "")
+                src = r.get("percentage_source", "")
+                if pct in ("", "null", None):
+                    triggered += 1
+                    details.append(f"percentage not computed from headcount: {r}")
+                elif src != "computed":
+                    triggered += 1
+                    details.append(f"Expected source='computed', got {src!r}: {r}")
+            trace_ids.append(tid)
+    finally:
+        os.unlink(tmp)
     return triggered, trace_ids, details
 
 
 def probe_P028() -> tuple[int, list[str], list[str]]:
-    """github_activity signal has no fork-vs-commit distinction in ai_maturity.score()."""
+    """Fork-only github activity must not inflate AI maturity score."""
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        # If caller passes github_activity=True based on forks-only, scorer accepts it
-        score_forks, _, conf_forks = ai_maturity.score({"github_activity": True})
-        score_none, _, conf_none = ai_maturity.score({})
-        # The scorer cannot distinguish forks from original commits — it's a bool input
-        # Triggered if score improves from a potentially-fork-inflated signal
+        score_forks, _, _ = ai_maturity.score({"github_activity": True, "github_fork_only": True})
+        score_none, _, _ = ai_maturity.score({})
         if score_forks > score_none:
             triggered += 1
             details.append(
-                f"github_activity=True (possibly forks) raises score {score_none}→{score_forks}; "
-                "scorer has no fork/commit distinction"
+                f"Fork-only activity raised score {score_none}→{score_forks}; "
+                "github_fork_only=True must suppress the weight"
             )
         trace_ids.append(tid)
     return triggered, trace_ids, details

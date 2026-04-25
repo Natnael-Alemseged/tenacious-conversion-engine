@@ -24,6 +24,40 @@ def _load_sample_benchmark(path: str | None = None) -> dict[str, Any]:
     return json.loads(sample.read_text(encoding="utf-8"))
 
 
+def find_competitors(
+    *,
+    prospect_name: str,
+    categories: list[str],
+    odm_data: list[dict[str, Any]],
+    max_peers: int = 6,
+) -> list[dict[str, Any]]:
+    """Return sector peers from enrichment ODM data matching the prospect's categories.
+
+    Uses the same Crunchbase ODM the enrichment pipeline already loads rather than
+    the bundled sample benchmark.
+    """
+    if not categories or not odm_data:
+        return []
+    lower_cats = {c.lower() for c in categories}
+    peers: list[dict[str, Any]] = []
+    for company in odm_data:
+        name = str(company.get("name") or "")
+        if name.lower() == prospect_name.lower():
+            continue
+        company_cats = [str(c).lower() for c in (company.get("categories") or [])]
+        if any(cat in lower_cats for cat in company_cats):
+            peers.append(
+                {
+                    "name": name,
+                    "domain": company.get("domain") or company.get("homepage_url") or "",
+                    "ai_maturity_score": int(company.get("ai_maturity_score") or 0),
+                    "categories": company.get("categories") or [],
+                    "top_quartile": bool(int(company.get("ai_maturity_score") or 0) >= 2),
+                }
+            )
+    return peers[:max_peers]
+
+
 def _prospect_sector(brief: HiringSignalBrief) -> tuple[str, str]:
     categories = brief.signals.crunchbase.data.categories
     if not categories:
@@ -152,11 +186,24 @@ def to_public_competitor_gap_brief(
     domain = _infer_domain(brief)
     sector, sub_niche = _prospect_sector(brief)
 
-    competitors = [
-        item
-        for item in sample.get("competitors_analyzed", [])
-        if item.get("domain") != sample.get("prospect_domain")
-    ]
+    from agent.enrichment import crunchbase as _crunchbase
+
+    odm = _crunchbase._load_odm() or []
+    live_peers = find_competitors(
+        prospect_name=brief.company_name,
+        categories=brief.signals.crunchbase.data.categories,
+        odm_data=odm,
+    )
+    if live_peers:
+        competitors = live_peers
+        benchmark_source = "odm_sector_peers"
+    else:
+        competitors = [
+            item
+            for item in sample.get("competitors_analyzed", [])
+            if item.get("domain") != sample.get("prospect_domain")
+        ]
+        benchmark_source = "bundled_sample_competitor_gap_brief"
     top_quartile_scores = [
         int(item.get("ai_maturity_score", 0))
         for item in competitors
@@ -176,7 +223,7 @@ def to_public_competitor_gap_brief(
         "generated_at": brief.generated_at,
         "prospect_ai_maturity_score": brief.signals.ai_maturity.score,
         "sector_top_quartile_benchmark": benchmark,
-        "competitors_analyzed": competitors[:6],
+        "competitors_analyzed": competitors,
         "gap_findings": gap_findings,
         "suggested_pitch_shift": _pitch_shift(gap_findings),
         "gap_quality_self_check": {
@@ -193,6 +240,6 @@ def to_public_competitor_gap_brief(
                 and brief.signals.job_posts.confidence < 0.75
             ),
         },
-        "benchmark_source": "bundled_sample_competitor_gap_brief",
+        "benchmark_source": benchmark_source,
         "benchmark_source_path": str(_sample_path() if benchmark_path is None else benchmark_path),
     }
