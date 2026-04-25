@@ -1,0 +1,8 @@
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:07:40.067052+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:07:40.070599+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:08:08.577393+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:08:08.580235+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:10:55.597289+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:10:55.599866+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:13:12.908649+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
+{"action": "suppressed", "channel": "sms", "decided_at": "2026-04-25T16:13:12.911246+00:00", "event_type": "sms_opt_out", "keyword": "STOP", "to_phone": "0000"}
