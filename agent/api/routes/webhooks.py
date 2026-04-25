@@ -12,11 +12,14 @@ from starlette.datastructures import UploadFile
 from agent.core.config import settings
 from agent.integrations.africastalking_sms import AfricasTalkingSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
+from agent.storage.conversations import ConversationStore
 from agent.storage.suppression import SmsSuppressionStore
 from agent.workflows.lead_orchestrator import LeadOrchestrator
+from agent.workflows.thread_state import recompute_state
 
 router = APIRouter()
 orchestrator = LeadOrchestrator()
+conversations = ConversationStore()
 _log = logging.getLogger(__name__)
 STOP_KEYWORDS = {"STOP", "UNSUB", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}
 HELP_KEYWORDS = {"HELP"}
@@ -471,6 +474,25 @@ async def inbound_sms(request: Request) -> dict[str, str]:
 
     if message in STOP_KEYWORDS:
         store.suppress(event.from_number)
+        if conversations.enabled:
+            resolved = conversations.resolve_thread_for_sms(from_phone=event.from_number)
+            if resolved:
+                conversations.insert_event(
+                    thread_id=resolved.thread_id,
+                    event_type="opt_out",
+                    payload={
+                        "channel": "sms",
+                        "source": "webhooks.sms",
+                        "message_id": event.message_id,
+                    },
+                )
+                prior = conversations.fetch_state(thread_id=resolved.thread_id)
+                msgs = conversations.fetch_recent_messages(thread_id=resolved.thread_id, limit=200)
+                evs = conversations.fetch_events(thread_id=resolved.thread_id, limit=200)
+                conversations.upsert_state(
+                    thread_id=resolved.thread_id,
+                    state=recompute_state(messages=msgs, events=evs, prior_state=prior),
+                )
         _log.info(
             "webhooks.sms",
             extra=_route_log_extra(
@@ -486,6 +508,25 @@ async def inbound_sms(request: Request) -> dict[str, str]:
 
     if message == "START":
         store.unsuppress(event.from_number)
+        if conversations.enabled:
+            resolved = conversations.resolve_thread_for_sms(from_phone=event.from_number)
+            if resolved:
+                conversations.insert_event(
+                    thread_id=resolved.thread_id,
+                    event_type="opt_in",
+                    payload={
+                        "channel": "sms",
+                        "source": "webhooks.sms",
+                        "message_id": event.message_id,
+                    },
+                )
+                prior = conversations.fetch_state(thread_id=resolved.thread_id)
+                msgs = conversations.fetch_recent_messages(thread_id=resolved.thread_id, limit=200)
+                evs = conversations.fetch_events(thread_id=resolved.thread_id, limit=200)
+                conversations.upsert_state(
+                    thread_id=resolved.thread_id,
+                    state=recompute_state(messages=msgs, events=evs, prior_state=prior),
+                )
         _log.info(
             "webhooks.sms",
             extra=_route_log_extra(
