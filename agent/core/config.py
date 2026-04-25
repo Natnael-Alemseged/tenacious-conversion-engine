@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     resend_from_email: str = ""
     resend_reply_to_email: str = ""
     resend_webhook_signing_secret: str = ""
+    resend_webhook_verify: bool = True
 
     # Outbound safety (Tenacious brief): sink routing unless explicitly enabled
     outbound_enabled: bool = False
