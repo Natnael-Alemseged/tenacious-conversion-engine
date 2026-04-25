@@ -1,0 +1,64 @@
+%PDF-1.4
+%âãÏÓ
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 414 >>
+stream
+BT
+/F1 12 Tf
+72 760 Td (Tenacious Conversion Engine â€” Act V Memo \(DRAFT\)) Tj
+72 744 Td (Page 1/2 â€” The Decision) Tj
+72 728 Td () Tj
+72 712 Td (Ï„Â² sealed pass@1: {'mean': 0.35, 'ci_95': [0.15, 0.55], 'n': 20}) Tj
+72 696 Td (Auto-opt sealed pass@1: 0.4) Tj
+72 680 Td (Measured total cost \(USD\): 0.2316939675) Tj
+72 664 Td () Tj
+72 648 Td (Pilot recommendation: Segment 2 email-first pilot, 30 days.) Tj
+ET
+endstream
+endobj
+3 0 obj
+<< /Length 481 >>
+stream
+BT
+/F1 12 Tf
+72 760 Td (Page 2/2 â€” The Skepticâ€™s Appendix \(DRAFT\)) Tj
+72 744 Td () Tj
+72 728 Td (1\) Offshore-perception objection risk \(see transcripts\).) Tj
+72 712 Td (2\) Bench mismatch risk \(see seed/bench_summary.json\).) Tj
+72 696 Td (3\) Public-signal lossiness risk \(false positives/negatives\).) Tj
+72 680 Td (4\) Gap-analysis framing risk \(avoid condescension\).) Tj
+72 664 Td () Tj
+72 648 Td (Kill-switch: pause if wrong-signal rate exceeds threshold.) Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 3 0 R >>
+endobj
+6 0 obj
+<< /Type /Pages /Kids [4 0 R 5 0 R] /Count 2 >>
+endobj
+7 0 obj
+<< /Type /Catalog /Pages 6 0 R >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000549 00000 n 
+0000001080 00000 n 
+0000001206 00000 n 
+0000001332 00000 n 
+0000001395 00000 n 
+trailer
+<< /Size 8 /Root 7 0 R >>
+startxref
+1444
+%%EOF
