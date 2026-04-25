@@ -393,6 +393,42 @@ def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypat
     assert "clearly in growth mode" not in result["reply"]["html"]
     assert "I do not want to over-read it" in result["reply"]["html"]
     assert "https://cal.com/tenacious-demo" in result["reply"]["html"]
+    assert "booking" not in result
+    assert result["enrichment"]["booking_created"] is False
+
+
+def test_handle_email_auto_books_when_explicit_iso_time_present(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    brief = _fake_brief(company_name="Acme", icp_segment=1, segment_confidence=0.9)
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    result = orchestrator.handle_email(
+        InboundEmailEvent(
+            from_email="jane.doe@acme.com",
+            subject="Please book the call",
+            body="2026-05-01T10:00:00Z works for me.",
+            message_id="msg_123",
+        )
+    )
+
+    assert result["booking"]["data"]["uid"] == "booking_uid_123"
+    assert result["booking"]["name"] == "Jane Doe"
+    assert result["booking"]["email"] == "jane.doe@acme.com"
+    assert result["booking"]["start"] == "2026-05-01T10:00:00Z"
+    assert result["booking"]["metadata"]["source"] == "inbound_email"
+    assert result["enrichment"]["booking_created"] is True
+    assert result["enrichment"]["requested_booking_start"] == "2026-05-01T10:00:00Z"
+    assert "I booked the discovery call for 2026-05-01T10:00:00Z" in result["reply"]["html"]
 
 
 def _make_orchestrator(

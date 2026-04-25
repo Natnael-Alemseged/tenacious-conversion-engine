@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -200,6 +201,12 @@ def _company_name_from_email(email: str) -> str:
     return root.title() if root else "your team"
 
 
+def _attendee_name_from_email(email: str) -> str:
+    local = str(email).split("@", 1)[0]
+    name = local.replace(".", " ").replace("_", " ").replace("-", " ").strip()
+    return name.title() if name else "Prospect"
+
+
 def _booking_intent(text: str) -> bool:
     lowered = text.lower()
     return any(
@@ -216,6 +223,21 @@ def _booking_intent(text: str) -> bool:
             "time to talk",
         )
     )
+
+
+def _booking_start_from_text(text: str) -> str | None:
+    match = re.search(
+        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})\b",
+        text,
+    )
+    if match is None:
+        return None
+    start = match.group(0)
+    if re.fullmatch(r".*T\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})", start):
+        start = start.replace("Z", ":00Z")
+        if not start.endswith("Z"):
+            start = f"{start[:-6]}:00{start[-6:]}"
+    return start
 
 
 def _signal_summary_from_brief(brief: HiringSignalBrief) -> str:
@@ -309,7 +331,9 @@ class LeadOrchestrator:
         company_name = _company_name_from_email(str(event.from_email))
         brief = self.enrichment_runner(company_name=company_name)
         signal_summary = _signal_summary_from_brief(brief)
-        booking_requested = _booking_intent(f"{event.subject}\n{event.body}")
+        inbound_text = f"{event.subject}\n{event.body}"
+        booking_requested = _booking_intent(inbound_text)
+        requested_booking_start = _booking_start_from_text(inbound_text)
         enrichment_props = {
             "lead_source": "inbound_email_reply",
             "last_email_reply_at": event.received_at.isoformat(),
@@ -365,9 +389,31 @@ class LeadOrchestrator:
                     span.update(output=result)
                 bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
                 can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
+                booking_result: dict[str, Any] | None = None
+                if booking_requested and requested_booking_start and bench_gate_passed:
+                    booking_result = self.book_discovery_call(
+                        attendee_name=_attendee_name_from_email(str(event.from_email)),
+                        attendee_email=str(event.from_email),
+                        start=requested_booking_start,
+                        timezone="UTC",
+                        icp_segment=brief.icp_segment,
+                        enrichment_summary=signal_summary,
+                        metadata={
+                            "source": "inbound_email",
+                            "message_id": event.message_id,
+                            "icp_segment": str(brief.icp_segment),
+                        },
+                        bench_to_brief_gate_passed=bench_gate_passed,
+                    )
+                    result["booking"] = booking_result
                 if can_route_reply and bench_gate_passed:
                     reply_signal_summary = signal_summary
-                    if booking_requested:
+                    if booking_result is not None:
+                        reply_signal_summary = (
+                            f"{signal_summary} I booked the discovery call for "
+                            f"{requested_booking_start}."
+                        )
+                    elif booking_requested:
                         if settings.calcom_username:
                             reply_signal_summary = (
                                 f"{signal_summary} If useful, you can pick a time here: "
@@ -407,6 +453,8 @@ class LeadOrchestrator:
                         brief.signals.bench.data.bench_to_brief_gate_passed
                     ),
                     "booking_requested": booking_requested,
+                    "requested_booking_start": requested_booking_start,
+                    "booking_created": booking_result is not None,
                 }
                 self._emit_reply_handler(channel="email", result=result, event=event)
                 _log.info(
