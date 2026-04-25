@@ -1,5 +1,6 @@
 import logging
 import logging.config
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -15,6 +16,20 @@ from agent.api.routes.outbound import router as outbound_router
 from agent.api.routes.webhooks import router as webhook_router
 from agent.core.config import settings
 from agent.storage.postgres import postgres_enabled, run_migrations
+
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+_PHONE_RE = re.compile(r"\+\d{7,15}")
+
+
+class _PiiRedactingFilter(logging.Filter):
+    """Scrub email addresses and E.164 phone numbers from structured log extra fields."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        for key, value in record.__dict__.items():
+            if isinstance(value, str) and ("@" in value or value.startswith("+")):
+                record.__dict__[key] = _PHONE_RE.sub("[phone]", _EMAIL_RE.sub("[email]", value))
+        return True
+
 
 # Snapshot clean record attrs before any extras are added, used by the formatter.
 _KNOWN_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {
@@ -63,6 +78,11 @@ def _configure_logging() -> None:
             "root": {"level": "WARNING", "handlers": ["console"]},
         }
     )
+    pii_filter = _PiiRedactingFilter()
+    for handler in logging.getLogger("agent").handlers:
+        handler.addFilter(pii_filter)
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(pii_filter)
 
 
 @asynccontextmanager
