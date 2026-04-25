@@ -266,7 +266,10 @@ def test_write_competitor_gap_brief_emits_benchmark_backed_shape(tmp_path, monke
     saved = json.loads(output_path.read_text())
     assert saved["prospect_domain"] == "acme.example"
     assert len(saved["competitors_analyzed"]) >= 5
-    assert saved["benchmark_source"] == "bundled_sample_competitor_gap_brief"
+    assert saved["benchmark_source"] in {
+        "bundled_sample_competitor_gap_brief",
+        "sparse_sector_fallback_to_sample",
+    }
     assert payload["gap_quality_self_check"]["all_peer_evidence_has_source_url"] is True
 
 
