@@ -1,0 +1,69 @@
+{
+  "draft": true,
+  "generated_at": "2026-04-25T12:28:02.443619+00:00",
+  "claims": [
+    {
+      "claim_id": "tau2_sealed_pass_at_1",
+      "label": "\u03c4\u00b2-Bench retail pass@1 (sealed held-out)",
+      "value": {
+        "mean": 0.35,
+        "ci_95": [
+          0.15,
+          0.55
+        ],
+        "n": 20
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/tau2_sealed/retail-test-20260425_120649-30a2a151/held_out_traces.jsonl"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/tau2_sealed/retail-test-20260425_120649-30a2a151/run_meta.json"
+        }
+      ],
+      "derivation": "Mean reward over sealed held-out simulations; CI via deterministic bootstrap over simulation rewards.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "tau2_auto_opt_sealed_pass_at_1",
+      "label": "Automated-optimization baseline pass@1 (sealed held-out)",
+      "value": 0.4,
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/auto_opt/retail-autoopt-20260425_121346-57eaac59/held_out_traces.jsonl"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/auto_opt/retail-autoopt-20260425_121346-57eaac59/run_meta.json"
+        }
+      ],
+      "derivation": "Automated baseline selects best dev config from a fixed sweep, then evaluates that config on sealed held-out.",
+      "recompute": {
+        "command": "SEALED_EVAL=1 uv run python eval/run_auto_opt_baseline.py --domain retail"
+      }
+    },
+    {
+      "claim_id": "total_cost_usd",
+      "label": "Total measured cost (USD) for Act V rollup window",
+      "value": 0.2316939675,
+      "unit": "usd",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/invoice_summary.json"
+        }
+      ],
+      "derivation": "Rollup total_cost_usd from the invoice summary.",
+      "recompute": {
+        "command": "uv run python scripts/build_invoice_rollup.py --include-auto-opt"
+      }
+    }
+  ]
+}

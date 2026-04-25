@@ -6,6 +6,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from act5.autoresponder import classify_autoresponder, load_heuristics
+from act5.outbound_events import append_outbound_event, append_reply_classification, now_iso
 from agent.core.config import settings
 from agent.enrichment.ai_maturity import confidence_phrasing
 from agent.enrichment.pipeline import run as run_enrichment_pipeline
@@ -430,6 +432,7 @@ class LeadOrchestrator:
         self.hubspot = hubspot or HubSpotClient()
         self.calcom = calcom or CalComClient()
         self.langfuse = langfuse or LangfuseClient()
+        self._autoresponder_heuristics = load_heuristics()
         self.resend = resend or ResendClient()
         self.sms = sms or AfricasTalkingSmsClient()
         self.reply_handler = reply_handler
@@ -568,6 +571,7 @@ class LeadOrchestrator:
                     raise
                 if span:
                     span.update(output=result)
+                hubspot_contact_id = str(result.get("id") or "")
                 bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
                 can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
                 exploratory_reply_ok = brief.icp_segment == 0 or brief.segment_confidence < 0.6
@@ -706,6 +710,39 @@ class LeadOrchestrator:
                     "requested_booking_start": requested_booking_start,
                     "booking_created": booking_result is not None,
                 }
+
+                # Act V measurement: record inbound email + autoresponder classification.
+                resend_thread_key = event.in_reply_to or event.message_id
+                inbound_class = classify_autoresponder(
+                    subject=event.subject,
+                    body=event.body,
+                    heuristics=self._autoresponder_heuristics,
+                )
+                append_outbound_event(
+                    {
+                        "event_type": "inbound_email",
+                        "sent_at": now_iso(),
+                        "channel": "email",
+                        "hubspot_contact_id": hubspot_contact_id,
+                        "resend_thread_key": resend_thread_key,
+                        "outbound_variant": "",
+                        "message_id": event.message_id,
+                        "idempotency_key": "",
+                        "intended_to": str(event.to),
+                        "routed_to": str(event.to),
+                    }
+                )
+                append_reply_classification(
+                    {
+                        "hubspot_contact_id": hubspot_contact_id,
+                        "resend_thread_key": resend_thread_key,
+                        "inbound_message_id": event.message_id,
+                        "classified_at": now_iso(),
+                        "is_autoresponder": inbound_class.is_autoresponder,
+                        "matched_on": inbound_class.matched_on,
+                        "matched_pattern": inbound_class.matched_pattern,
+                    }
+                )
                 self._emit_reply_handler(channel="email", result=result, event=event)
                 _log.info(
                     "handle_email",
@@ -846,6 +883,7 @@ class LeadOrchestrator:
         reply_to_message_id: str | None = None,
         reference_message_ids: list[str] | None = None,
         idempotency_key: str | None = None,
+        outbound_variant: str = "generic",
     ) -> dict[str, Any]:
         seg = icp_segment if icp_segment in _SUBJECT_SUFFIXES else 0
         subject = _build_subject(company_name, seg)
@@ -936,6 +974,7 @@ class LeadOrchestrator:
             "ai_maturity_score": ai_maturity_score,
             "confidence": confidence,
             "segment_confidence": segment_confidence,
+            "outbound_variant": outbound_variant,
         }
         with self.langfuse.trace_workflow("send_outbound_email", trace_payload):
             with self.langfuse.span(
@@ -1000,7 +1039,7 @@ class LeadOrchestrator:
                 },
             ) as hs_span:
                 try:
-                    self.hubspot.upsert_contact(
+                    hs_result = self.hubspot.upsert_contact(
                         identifier=to_email,
                         source="outbound_email",
                         properties=enrichment_props,
@@ -1034,6 +1073,23 @@ class LeadOrchestrator:
                     raise
                 if hs_span:
                     hs_span.update(output={"ok": True})
+
+            hubspot_contact_id = str((hs_result or {}).get("id") or "")
+            resend_thread_key = reply_to_message_id or str(result.get("id") or "")
+            append_outbound_event(
+                {
+                    "event_type": "outbound_email",
+                    "sent_at": now_iso(),
+                    "channel": "email",
+                    "hubspot_contact_id": hubspot_contact_id,
+                    "resend_thread_key": resend_thread_key,
+                    "outbound_variant": outbound_variant,
+                    "message_id": str(result.get("id") or ""),
+                    "idempotency_key": idempotency_key or "",
+                    "intended_to": to_email,
+                    "routed_to": routed_to,
+                }
+            )
 
             _log.info(
                 "outbound_email_send",

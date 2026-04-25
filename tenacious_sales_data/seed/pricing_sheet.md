@@ -8,12 +8,12 @@ Public-tier pricing bands. Your agent may quote these in outbound and reply emai
 
 | Role | Experience | Monthly rate | Notes |
 |---|---|---|---|
-| Junior engineer | 0–2 years | from **$[JUNIOR_MONTHLY_RATE] USD/month** | 160 hours/month, includes project management overhead |
-| Mid-level engineer | 2–4 years | from **$[MID_MONTHLY_RATE] USD/month** | As above; suitable for team-lead-adjacent roles |
-| Senior / team lead | 4–7 years | from **$[SENIOR_MONTHLY_RATE] USD/month** | Includes architecture input and team coordination |
-| Delivery lead / manager | 7+ years | from **$[MANAGER_MONTHLY_RATE] USD/month** | Quote as fractional; typical engagement 0.5–1.0 FTE |
+| Junior engineer | 0–2 years | from **$6,700 USD/month** | 160 hours/month, includes project management overhead |
+| Mid-level engineer | 2–4 years | from **$8,500 USD/month** | As above; suitable for team-lead-adjacent roles |
+| Senior / team lead | 4–7 years | from **$11,000 USD/month** | Includes architecture input and team coordination |
+| Delivery lead / manager | 7+ years | from **$14,000 USD/month** | Quote as fractional; typical engagement 0.5–1.0 FTE |
 
-**Hourly equivalent** (for prospects who ask): approximately **\$[JUNIOR_HOURLY_RATE]–\$[SENIOR_HOURLY_RATE]/hour** depending on seniority. For a blended team of experts (architect + ICs + PM), a blended hourly rate of **$[BLENDED_HOURLY_RATE]/hour** is a reasonable conversational anchor, but commit to the monthly figure in any written proposal.
+**Hourly equivalent** (for prospects who ask): approximately **$42–$90/hour** depending on seniority (monthly / 160 hours). For a blended team of experts (architect + ICs + PM), a blended hourly rate of **$70/hour** is a reasonable conversational anchor, but commit to the monthly figure in any written proposal.
 
 ### Engagement minimums
 
@@ -43,15 +43,15 @@ Segment 4 engagements. Fixed-price contracts with defined deliverables and miles
 
 | Engagement type | Typical price | Typical duration |
 |---|---|---|
-| Starter analytics / dashboard project | from **\$[PROJECT_ACV_MIN] USD** | 3–5 weeks |
-| Fixed-scope tool or feature build (e.g., QR scanning system) | from **\$[SMALL_TOOL_PROJECT] USD** | 3–5 weeks |
-| ML/Data product MVP (proof of concept) | from **\$[MVP_PROJECT] USD** | 2–3 months |
-| Mid-sized AI system build | **\$[MID_SYSTEM_MIN]–\$[MID_SYSTEM_MAX] USD** | 3–4 months |
-| Multi-phase platform engagement | **\$[LARGE_PLATFORM_MIN]–\$[LARGE_PLATFORM_MAX] USD** | 6–12 months |
+| Starter analytics / dashboard project | from **$80,000 USD** | 3–5 weeks |
+| Fixed-scope tool or feature build (e.g., QR scanning system) | from **$80,000 USD** | 3–5 weeks |
+| ML/Data product MVP (proof of concept) | from **$150,000 USD** | 2–3 months |
+| Mid-sized AI system build | **$200,000–$300,000 USD** | 3–4 months |
+| Multi-phase platform engagement | **$300,000+ USD** | 6–12 months |
 
 ### Phase structure for larger engagements
 
-For engagements above $[MID_SYSTEM_MIN], Tenacious typically structures the contract in three to five phases with:
+For engagements above $200,000, Tenacious typically structures the contract in three to five phases with:
 - A Phase 1 deliverable reviewable inside the first four weeks.
 - Milestone payments tied to phase sign-off.
 - An explicit Phase 1 termination clause — the client can exit after Phase 1 without committing to the remaining phases.
@@ -64,8 +64,8 @@ The agent should **not** commit to phase structure specifics in a cold outreach 
 
 | Format | Price | Duration |
 |---|---|---|
-| Per-seat AI fluency training (group cohort) | from **$[TRAINING_PER_PERSON] USD/person** | 2-day intensive |
-| Executive / leadership AI workshop | from **$[WORKSHOP_PRICE] USD** | 1 day, up to 15 attendees |
+| Per-seat AI fluency training (group cohort) | **Custom** | 2-day intensive |
+| Executive / leadership AI workshop | **Custom** | 1 day, up to 15 attendees |
 | Corporate AI strategy engagement | **Custom** | 4–8 weeks |
 
 Training engagements are frequently bundled with project consulting — the agent should flag this combination in the context brief when a prospect mentions training interest in an email reply.
@@ -75,8 +75,8 @@ Training engagements are frequently bundled with project consulting — the agen
 ## What your agent may quote verbatim
 
 - The monthly and hourly rate ranges above.
-- The $[PROJECT_ACV_MIN] starter project floor.
-- The $[JUNIOR_MONTHLY_RATE]/month junior floor.
+- The $80,000 starter project floor.
+- The $6,700/month junior floor.
 - The 1-month minimum and 2-week extension cadence.
 
 ## What your agent may NOT quote

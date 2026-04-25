@@ -9,16 +9,20 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import statistics
 import subprocess
 import time
+import uuid
 from pathlib import Path
+from typing import Any
 
 EVAL_DIR = Path(__file__).parent
 BACKEND_DIR = EVAL_DIR.parent.parent
 TAU2_PATH = BACKEND_DIR / "tau2-bench"
 SCORE_LOG = EVAL_DIR / "score_log.json"
 TRACE_LOG = EVAL_DIR / "trace_log.jsonl"
+RUNS_DIR = EVAL_DIR / "runs"
 
 
 def _mean_confidence_interval_95(samples: list[float]) -> dict[str, float]:
@@ -55,6 +59,78 @@ def _extract_trial_rewards(results_path: Path) -> list[float]:
     return [float((sim.get("reward_info") or {}).get("reward") or 0.0) for sim in simulations]
 
 
+def _bootstrap_ci_95(
+    samples: list[float], *, iters: int = 5000, seed: int = 1337
+) -> dict[str, float]:
+    """Deterministic bootstrap CI for pass@1-like proportions."""
+    if not samples:
+        return {"mean": 0.0, "ci_95_low": 0.0, "ci_95_high": 0.0}
+    import random
+
+    rng = random.Random(seed)
+    n = len(samples)
+    mean = statistics.mean(samples)
+    if n == 1:
+        return {"mean": mean, "ci_95_low": mean, "ci_95_high": mean}
+    draws: list[float] = []
+    for _ in range(iters):
+        resample = [samples[rng.randrange(n)] for _ in range(n)]
+        draws.append(statistics.mean(resample))
+    draws.sort()
+    lo = draws[int(0.025 * iters)]
+    hi = draws[int(0.975 * iters)]
+    return {"mean": mean, "ci_95_low": max(0.0, lo), "ci_95_high": min(1.0, hi)}
+
+
+def _write_run_dir(
+    *,
+    run_dir: Path,
+    domain: str,
+    agent_llm: str,
+    user_llm: str,
+    task_split_name: str,
+    results: list[dict[str, Any]],
+) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "run_id": run_dir.name,
+        "domain": domain,
+        "agent_llm": agent_llm,
+        "user_llm": user_llm,
+        "task_split_name": task_split_name,
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    (run_dir / "run_meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+
+    lines: list[str] = []
+    for trial in results:
+        trial_idx = int(trial["trial_index"])
+        src = Path(trial["results_path"])
+        dst = run_dir / f"trial_{trial_idx}_results.json"
+        if not src.exists():
+            continue
+        dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        payload = json.loads(dst.read_text(encoding="utf-8"))
+        for sim in payload.get("simulations", []):
+            lines.append(
+                json.dumps(
+                    {
+                        "trace_id": str(sim.get("id", "")),
+                        "task_id": str(sim.get("task_id", "")),
+                        "reward": float((sim.get("reward_info") or {}).get("reward") or 0.0),
+                        "agent_cost_usd": float(sim.get("agent_cost") or 0.0),
+                        "duration_s": float(sim.get("duration") or 0.0),
+                        "termination_reason": str(sim.get("termination_reason") or ""),
+                        "source_results_path": str(dst),
+                    }
+                )
+            )
+    (run_dir / "held_out_traces.jsonl").write_text(
+        "\n".join(lines) + ("\n" if lines else ""),
+        encoding="utf-8",
+    )
+
+
 def _model_slug(llm: str) -> str:
     """Short filesystem-safe slug from a model string."""
     return llm.split("/")[-1][:32].replace(":", "-")
@@ -70,7 +146,12 @@ def run_trial(
     trial_index: int,
 ) -> dict:
     slug = _model_slug(agent_llm)
-    save_to = f"ce-baseline-{domain}-{slug}-t{trial_index}"
+    # save_to must be unique per (split, selection of tasks), otherwise tau2 will try
+    # to resume and can error if the task set differs. Include split + timestamp.
+    save_to = (
+        f"ce-run-{domain}-{task_split_name}-{slug}-t{trial_index}-"
+        f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}"
+    )
     cmd = [
         "uv",
         "run",
@@ -125,7 +206,14 @@ def main() -> None:
     parser.add_argument("--task-split-name", default="train")
     parser.add_argument("--num-tasks", type=int, default=30)
     parser.add_argument("--task-ids", nargs="+")
+    parser.add_argument("--write-run-dir", action="store_true")
     args = parser.parse_args()
+
+    if args.task_split_name == "test" and os.environ.get("SEALED_EVAL") != "1":
+        raise SystemExit(
+            "Refusing to run sealed held-out split without SEALED_EVAL=1. "
+            "Set SEALED_EVAL=1 explicitly to acknowledge this is the sealed run."
+        )
 
     results = [
         run_trial(
@@ -142,6 +230,7 @@ def main() -> None:
 
     pass_scores = [trial["pass_at_1"] for trial in results]
     ci = _mean_confidence_interval_95(pass_scores)
+    boot = _bootstrap_ci_95(pass_scores)
     summary = {
         "domain": args.domain,
         "agent_llm": args.agent_llm,
@@ -154,6 +243,10 @@ def main() -> None:
         "ci_95_low": ci["ci_95_low"],
         "ci_95_high": ci["ci_95_high"],
         "ci_95_margin": ci["ci_95_margin"],
+        "bootstrap_ci_95_low": boot["ci_95_low"],
+        "bootstrap_ci_95_high": boot["ci_95_high"],
+        "bootstrap_ci_method": "bootstrap_mean_over_trials",
+        "bootstrap_ci_iters": 5000,
         "min_pass_at_1": min(pass_scores) if pass_scores else 0.0,
         "max_pass_at_1": max(pass_scores) if pass_scores else 0.0,
         "results": results,
@@ -168,6 +261,29 @@ def main() -> None:
             trace_file.write(json.dumps(trial) + "\n")
 
     print(f"Wrote baseline summary to {SCORE_LOG}")
+
+    if args.write_run_dir:
+        run_id = (
+            f"{args.domain}-{args.task_split_name}-"
+            f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}-{uuid.uuid4().hex[:8]}"
+        )
+        bucket = "tau2_sealed" if args.task_split_name == "test" else "tau2_dev"
+        run_dir = RUNS_DIR / bucket / run_id
+        _write_run_dir(
+            run_dir=run_dir,
+            domain=args.domain,
+            agent_llm=args.agent_llm,
+            user_llm=args.user_llm,
+            task_split_name=args.task_split_name,
+            results=results,
+        )
+        if args.task_split_name == "test":
+            root_export = EVAL_DIR.parent / "held_out_traces.jsonl"
+            root_export.write_text(
+                (run_dir / "held_out_traces.jsonl").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            print(f"Wrote sealed held-out traces export to {root_export}")
 
 
 if __name__ == "__main__":

@@ -26,11 +26,11 @@ Every numeric claim in `memo.pdf` must resolve to either:
 
 | Engagement type | Range | Notes |
 |---|---|---|
-| Talent outsourcing ACV | **\$[ACV_MIN] – \$[ACV_MAX]** | Range revised from original \$[OLD_ACV_MIN]–\$[OLD_ACV_MAX] to reflect realized floor. Minimum 3-engineer, 12-month engagement at \$[JUNIOR_MONTHLY_RATE]/month junior rate = \$[ACV_MIN]. |
-| Project consulting ACV | **\$[PROJECT_ACV_MIN] – \$[PROJECT_ACV_MAX]** | Range revised from original \$[OLD_PROJECT_ACV_MIN]–\$[OLD_PROJECT_ACV_MAX] to include realized starter-project floor (e.g., \$[PROJECT_ACV_MIN] QuickSight analytics stack with optional pipelining). |
-| Training engagement ACV | **\$[TRAINING_ACV_MIN] – \$[TRAINING_ACV_MAX]** | Based on last 8 training deals. \$[TRAINING_PER_PERSON]/person cohort minimum × 10 people = \$[TRAINING_ACV_MIN] floor. |
+| Talent outsourcing ACV | **$240,000 – $720,000** | Challenge-week reference range from the TRP1 Week 10 brief. Use for Act V memo calculations unless Tenacious provides revised internal ranges with explicit provenance. |
+| Project consulting ACV | **$80,000 – $300,000** | Challenge-week reference range from the TRP1 Week 10 brief. Includes the “starter fixed-scope” de-risking floor. |
+| Training engagement ACV | **Not provided** | Not required for Week 10 Act V memo calculations unless a Tenacious-provided source is added. Do not invent training ACV. |
 
-**Note on the range revision.** The original ACV ranges in the challenge brief (\$[OLD_ACV_MIN]–\$[OLD_ACV_MAX] for talent outsourcing, \$[OLD_PROJECT_ACV_MIN]–\$[OLD_PROJECT_ACV_MAX] for project consulting) were aspirational. The revised ranges above reflect realized deal size from the Tenacious internal review in February 2026. For memo calculations, **use the revised ranges** and cite them as "Tenacious internal, revised Feb 2026."
+**Note on ranges.** If Tenacious-internal revised ACV ranges are later provided (e.g. “revised Feb 2026”), add them as new rows with explicit provenance. Until then, Act V uses the challenge brief reference ranges above and cites the brief in `act5/citations.json`.
 
 ## Operational baselines
 
@@ -59,17 +59,17 @@ Every numeric claim in `memo.pdf` must resolve to either:
 
 | Item | Budget |
 |---|---|
-| Dev-tier LLM spend, Days 1–4 | **under $[DEV_LLM_COST_MAX]** |
-| Eval-tier LLM spend, Days 5–7 (sealed held-out only) | **under $[EVAL_LLM_COST_MAX]** |
-| Total per-trainee LLM budget | **under $[TOTAL_LLM_COST_MAX]** |
-| Target cost per qualified lead (memo claim) | **under $[TARGET_CPL]** |
-| Cost per qualified lead above which a penalty applies | **$[CPL_PENALTY_THRESHOLD]** |
+| Dev-tier LLM spend, Days 1–4 | **under $4** |
+| Eval-tier LLM spend, Days 5–7 (sealed held-out only) | **under $12** |
+| Total per-trainee LLM budget | **under $20** |
+| Target cost per qualified lead (memo claim) | **under $5** |
+| Cost per qualified lead above which a penalty applies | **$8** |
 
 ## How to use these numbers in the memo
 
 ### Good (grounded)
 
-> "Assuming the revised talent-outsourcing ACV floor of \$[ACV_MIN] ([source](seed/baseline_numbers.md)) and the measured discovery-call-to-proposal conversion of 42% from our traces ([trace ID `run_2026-04-25_14-32`](eval/runs/)), a pilot scoped to Segment 2 with 40 qualified leads per month yields an expected annualized revenue of \$[EXPECTED_REV] at the midpoint, with 95% CI [\$[REV_CI_LOW], \$[REV_CI_HIGH]]."
+> "Assuming the talent-outsourcing ACV floor of $240,000 ([source](seed/baseline_numbers.md)) and the measured discovery-call-to-proposal conversion of 42% from our traces ([trace ID `run_2026-04-25_14-32`](eval/runs/)), a pilot scoped to Segment 2 with 40 qualified leads per month yields an expected annualized revenue of $[EXPECTED_REV] at the midpoint, with 95% CI [$[REV_CI_LOW], $[REV_CI_HIGH]]."
 
 ### Bad (fabricated)
 
