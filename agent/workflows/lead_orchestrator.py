@@ -20,6 +20,7 @@ from agent.integrations.resend_email import ResendClient, ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.storage.conversations import ConversationStore
 from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
+from agent.workflows.reply_intent import ReplyIntentResult, classify_reply_intent
 from agent.workflows.thread_context import load_thread_context
 from agent.workflows.thread_state import recompute_state
 
@@ -385,11 +386,14 @@ def _build_inbound_email_reply(
     booking_requested: bool,
     booking_result: dict[str, Any] | None,
     requested_booking_start: str | None,
+    intent: ReplyIntentResult | None = None,
+    qualification_brief: str = "",
 ) -> tuple[str, str, str]:
     name = _attendee_name_from_email(str(event.from_email)).split(" ", 1)[0]
     focus = _extract_hiring_focus(f"{event.subject}\n{event.body}")
     greeting = f"Hi {name},"
     opener = f"Thanks for reaching out about {focus} at {company_name}."
+    wants_brief = bool(intent and intent.intent == "request_brief" and intent.confidence >= 0.5)
     if booking_result is not None and requested_booking_start:
         middle = f"I've booked the call for {requested_booking_start} UTC."
         closing = (
@@ -410,11 +414,24 @@ def _build_inbound_email_reply(
             "more specific."
         )
     else:
-        middle = (
-            "If helpful, send the role count, seniority level, timezone overlap, and target "
-            "start date and I can reply with a tighter recommendation."
-        )
-        closing = "I can also send a few scheduling options if you'd rather talk it through live."
+        if wants_brief and qualification_brief:
+            middle = (
+                "Here’s the qualification brief based on public signals we checked:\n\n"
+                f"{qualification_brief.strip()}"
+            )
+            closing = (
+                "If you share role count, seniority mix, timezone overlap, and target start date, "
+                "I can tighten the recommendation. If you'd rather talk live, I can also send "
+                "a few scheduling options."
+            )
+        else:
+            middle = (
+                "If helpful, send the role count, seniority level, timezone overlap, and target "
+                "start date and I can reply with a tighter recommendation."
+            )
+            closing = (
+                "I can also send a few scheduling options if you'd rather talk it through live."
+            )
     html = f"<p>{greeting}</p><p>{opener}</p><p>{middle}</p><p>{closing}</p>"
     text = f"{greeting}\n\n{opener}\n\n{middle}\n\n{closing}"
     return _reply_subject(event.subject), html, text
@@ -679,12 +696,26 @@ class LeadOrchestrator:
                         result["thread_context"] = load_thread_context(
                             store=self.conversations, thread_id=thread_id, limit=10
                         ).__dict__
+                    intent = classify_reply_intent(subject=event.subject, body=event.body)
+                    segment_line = (
+                        f"- Segment: {brief.icp_segment} "
+                        f"(confidence {brief.segment_confidence:.2f})\n"
+                    )
+                    qualification_brief = (
+                        segment_line
+                        + f"- AI maturity: {brief.signals.ai_maturity.score}/3\n"
+                        + "- Bench gate: "
+                        + ("passed\n" if bench_gate_passed else "failed\n")
+                        + f"- Summary: {_signal_summary_from_brief(brief)}\n"
+                    )
                     reply_subject, reply_html, reply_text = _build_inbound_email_reply(
                         event=event,
                         company_name=brief.company_name,
                         booking_requested=booking_requested,
                         booking_result=booking_result,
                         requested_booking_start=requested_booking_start,
+                        intent=intent,
+                        qualification_brief=qualification_brief,
                     )
                     reference_message_ids = [
                         ref for ref in (event.in_reply_to, event.message_id) if ref
