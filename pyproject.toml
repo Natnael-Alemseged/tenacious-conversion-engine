@@ -21,6 +21,8 @@ dependencies = [
   "africastalking>=1.0",
   "playwright>=1.40",
   "mcp>=1.0",
+  "psycopg[binary]>=3.3.3",
+  "psycopg-pool>=3.3.0",
 ]
 
 [dependency-groups]
