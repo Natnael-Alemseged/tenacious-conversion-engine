@@ -1,6 +1,6 @@
 {
   "draft": true,
-  "generated_at": "2026-04-25T12:28:02.443619+00:00",
+  "generated_at": "2026-04-25T12:43:01.052590+00:00",
   "claims": [
     {
       "claim_id": "tau2_sealed_pass_at_1",
@@ -63,6 +63,200 @@
       "derivation": "Rollup total_cost_usd from the invoice summary.",
       "recompute": {
         "command": "uv run python scripts/build_invoice_rollup.py --include-auto-opt"
+      }
+    },
+    {
+      "claim_id": "competitive_gap_reply_rate",
+      "label": "Competitive-gap outbound reply rate (non-autoresponder)",
+      "value": {
+        "reply_rate": 1.0,
+        "replied_n": 25,
+        "outbound_n": 25,
+        "population_ids": [
+          "hs-prospect+cg0@example.com",
+          "hs-prospect+cg10@example.com",
+          "hs-prospect+cg11@example.com",
+          "hs-prospect+cg12@example.com",
+          "hs-prospect+cg13@example.com",
+          "hs-prospect+cg14@example.com",
+          "hs-prospect+cg15@example.com",
+          "hs-prospect+cg16@example.com",
+          "hs-prospect+cg17@example.com",
+          "hs-prospect+cg18@example.com",
+          "hs-prospect+cg19@example.com",
+          "hs-prospect+cg1@example.com",
+          "hs-prospect+cg20@example.com",
+          "hs-prospect+cg21@example.com",
+          "hs-prospect+cg22@example.com",
+          "hs-prospect+cg23@example.com",
+          "hs-prospect+cg24@example.com",
+          "hs-prospect+cg2@example.com",
+          "hs-prospect+cg3@example.com",
+          "hs-prospect+cg4@example.com",
+          "hs-prospect+cg5@example.com",
+          "hs-prospect+cg6@example.com",
+          "hs-prospect+cg7@example.com",
+          "hs-prospect+cg8@example.com",
+          "hs-prospect+cg9@example.com"
+        ]
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/events.jsonl"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/reply_classification.jsonl"
+        }
+      ],
+      "derivation": "Replies counted as inbound_email events matched to outbound threads, excluding autoresponders.",
+      "recompute": {
+        "command": "uv run python scripts/run_outbound_variant_eval.py"
+      }
+    },
+    {
+      "claim_id": "generic_reply_rate",
+      "label": "Generic outbound reply rate (non-autoresponder)",
+      "value": {
+        "reply_rate": 0.23577235772357724,
+        "replied_n": 29,
+        "outbound_n": 123,
+        "population_ids": [
+          "",
+          "hs-prospect+gen0@example.com",
+          "hs-prospect+gen10@example.com",
+          "hs-prospect+gen12@example.com",
+          "hs-prospect+gen14@example.com",
+          "hs-prospect+gen16@example.com",
+          "hs-prospect+gen18@example.com",
+          "hs-prospect+gen20@example.com",
+          "hs-prospect+gen22@example.com",
+          "hs-prospect+gen24@example.com",
+          "hs-prospect+gen2@example.com",
+          "hs-prospect+gen4@example.com",
+          "hs-prospect+gen6@example.com",
+          "hs-prospect+gen8@example.com"
+        ]
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/events.jsonl"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/reply_classification.jsonl"
+        }
+      ],
+      "derivation": "Same reply-rate definition as competitive-gap variant.",
+      "recompute": {
+        "command": "uv run python scripts/run_outbound_variant_eval.py"
+      }
+    },
+    {
+      "claim_id": "competitive_gap_reply_rate_delta",
+      "label": "Reply-rate delta: competitive-gap minus generic",
+      "value": 0.7642276422764227,
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "derived",
+          "from": [
+            "competitive_gap_reply_rate",
+            "generic_reply_rate"
+          ]
+        }
+      ],
+      "derivation": "Delta computed from the two per-variant reply rates.",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
+      }
+    },
+    {
+      "claim_id": "stalled_thread_rate",
+      "label": "Stalled-thread rate (14d no booking proxy = no booking_created)",
+      "value": {
+        "stalled_rate": 0.9230769230769231,
+        "stalled_n": 48,
+        "inbound_n": 52,
+        "population_ids": [
+          "hs-prospect+cg0@example.com",
+          "hs-prospect+cg10@example.com",
+          "hs-prospect+cg11@example.com",
+          "hs-prospect+cg12@example.com",
+          "hs-prospect+cg13@example.com",
+          "hs-prospect+cg14@example.com",
+          "hs-prospect+cg15@example.com",
+          "hs-prospect+cg16@example.com",
+          "hs-prospect+cg17@example.com",
+          "hs-prospect+cg18@example.com",
+          "hs-prospect+cg19@example.com",
+          "hs-prospect+cg1@example.com",
+          "hs-prospect+cg20@example.com",
+          "hs-prospect+cg21@example.com",
+          "hs-prospect+cg22@example.com",
+          "hs-prospect+cg23@example.com",
+          "hs-prospect+cg24@example.com",
+          "hs-prospect+cg2@example.com",
+          "hs-prospect+cg3@example.com",
+          "hs-prospect+cg4@example.com",
+          "hs-prospect+cg5@example.com",
+          "hs-prospect+cg6@example.com",
+          "hs-prospect+cg7@example.com",
+          "hs-prospect+cg8@example.com",
+          "hs-prospect+cg9@example.com",
+          "hs-prospect+gen0@example.com",
+          "hs-prospect+gen10@example.com",
+          "hs-prospect+gen12@example.com",
+          "hs-prospect+gen14@example.com",
+          "hs-prospect+gen16@example.com",
+          "hs-prospect+gen18@example.com",
+          "hs-prospect+gen20@example.com",
+          "hs-prospect+gen22@example.com",
+          "hs-prospect+gen24@example.com",
+          "hs-prospect+gen2@example.com",
+          "hs-prospect+gen4@example.com",
+          "hs-prospect+gen6@example.com",
+          "hs-prospect+gen8@example.com"
+        ]
+      },
+      "unit": "proportion",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/thread_outcomes.jsonl"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/reply_classification.jsonl"
+        }
+      ],
+      "derivation": "Among non-autoresponder inbound replies, stalled if booking_created is false.",
+      "recompute": {
+        "command": "uv run python scripts/run_outbound_variant_eval.py"
+      }
+    },
+    {
+      "claim_id": "cost_per_qualified_lead",
+      "label": "Cost per qualified lead (USD) where qualified = booking_created",
+      "value": 0.057923491875,
+      "unit": "usd_per_qualified_lead",
+      "sources": [
+        {
+          "kind": "trace",
+          "path": "eval/runs/invoice_summary.json"
+        },
+        {
+          "kind": "trace",
+          "path": "eval/runs/outbound/thread_outcomes.jsonl"
+        }
+      ],
+      "derivation": "CPL = total_cost_usd / booked_n (booking_created).",
+      "recompute": {
+        "command": "uv run python scripts/generate_act5.py --strict-final"
       }
     }
   ]
