@@ -9,3 +9,9 @@ __pycache__/
 
 # HubSpot config file
 hubspot.config.yml
+.worktrees/
+
+# Local / scratch logs (keep out of VCS; do not delete locally)
+trace_log.jsonl
+score_log.json
+.DS_Store
