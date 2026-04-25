@@ -268,80 +268,244 @@ def build_claims(*, strict_final: bool) -> list[Claim]:
         )
     )
 
-    # Speed-to-lead (method sealed run, per-task p50)
+    # τ² task duration (method sealed run, per-task p50/p95) — simulator runtime proxy only.
     method_durs = sorted(float(r["duration_s"]) for r in sealed_traces)
-    speed_p50 = statistics.median(method_durs)
-    speed_p95 = _percentile_canonical(method_durs, 0.95)
+    dur_p50 = statistics.median(method_durs) if method_durs else 0.0
+    dur_p95 = _percentile_canonical(method_durs, 0.95) if method_durs else 0.0
     claims.append(
         Claim(
-            claim_id="speed_to_lead_p50_seconds",
-            label="Speed-to-lead: agent task p50 duration (seconds, method sealed run)",
-            value={
-                "p50_s": round(speed_p50, 2),
-                "p95_s": round(speed_p95, 2),
-                "n": len(method_durs),
-            },
+            claim_id="tau2_task_duration_p50_seconds",
+            label="τ² task duration p50/p95 (seconds, method sealed run)",
+            value={"p50_s": round(dur_p50, 2), "p95_s": round(dur_p95, 2), "n": len(method_durs)},
             unit="seconds",
             sources=[{"kind": "trace", "path": str(sealed_run / "held_out_traces.jsonl")}],
             derivation=(
-                f"p50 = median(duration_s) over {len(method_durs)} sealed method tasks. "
+                f"p50 = median(duration_s) over {len(method_durs)} sealed method τ² tasks; "
                 "p95 uses ceil(0.95×n)−1 index (same as generate_submission_artifacts.py). "
-                "Human baseline is 42 min (2 520 s) median per published industry survey."
+                "This is τ² simulator task completion time, not real-world email response latency."
             ),
             recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
         )
     )
 
-    # Annualized impact scenarios (derivation: labor savings vs agent cost)
-    # SDR fully-loaded rate: $60/hr (US median ~$75k salary + ~33% overhead ÷ 2080 hrs ≈ $48,
-    # rounded to $60/hr for burden including tools and management).
-    # Human speed-to-lead: 42 min (spec).  Agent cost: method cost_per_task from ablation_results.
-    ab_path = Path("ablation_results.json")
-    if ab_path.exists():
-        ab = json.loads(ab_path.read_text(encoding="utf-8"))
-        method_cost_per_task = next(
-            (c["cost_per_task_usd"] for c in ab.get("conditions", []) if c["key"] == "method"),
-            0.0,
+    # Tenacious baselines (allowed internal numbers)
+    claims.append(
+        Claim(
+            claim_id="tenacious_manual_stalled_thread_baseline",
+            label="Tenacious manual stalled-thread baseline (range)",
+            value={"range": [0.30, 0.40]},
+            unit="proportion",
+            sources=[
+                {
+                    "kind": "document",
+                    "path": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md",
+                }
+            ],
+            derivation="Baseline range stated in the Week 10 Act V memo requirements.",
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
         )
-        sdr_hourly = 60.0
-        human_minutes = 42.0
-        labor_cost_per_attempt = sdr_hourly * (human_minutes / 60.0)
-        net_savings_per_attempt = labor_cost_per_attempt - method_cost_per_task
-        for scenario_key, label, leads_per_week in [
-            ("annualized_impact_conservative", "conservative (50 leads/week)", 50),
-            ("annualized_impact_expected", "expected (200 leads/week)", 200),
-            ("annualized_impact_upside", "upside (1 000 leads/week)", 1_000),
-        ]:
-            annual_leads = leads_per_week * 50
-            annual_savings = net_savings_per_attempt * annual_leads
-            claims.append(
-                Claim(
-                    claim_id=scenario_key,
-                    label=f"Annualized labor-savings impact — {label}",
-                    value={
-                        "annual_savings_usd": round(annual_savings, 2),
-                        "leads_per_week": leads_per_week,
-                        "annual_leads": annual_leads,
-                        "net_savings_per_attempt_usd": round(net_savings_per_attempt, 4),
-                        "labor_cost_per_attempt_usd": round(labor_cost_per_attempt, 2),
-                        "agent_cost_per_attempt_usd": round(method_cost_per_task, 6),
-                    },
-                    unit="usd_per_year",
-                    sources=[
-                        {"kind": "trace", "path": "ablation_results.json"},
-                        {"kind": "published", "label": "SDR fully-loaded rate $60/hr"},
-                        {"kind": "published", "label": "Human speed-to-lead 42 min (spec)"},
-                    ],
-                    derivation=(
-                        f"annual_savings = (sdr_hourly × human_minutes/60 − agent_cost/task) "
-                        f"× leads_per_week × 50 weeks "
-                        f"= (${labor_cost_per_attempt:.2f} − ${method_cost_per_task:.4f}) "
-                        f"× {leads_per_week} × 50 = ${annual_savings:,.2f}. "
-                        "Agent cost from ablation_results.json method condition."
-                    ),
-                    recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
-                )
-            )
+    )
+    claims.append(
+        Claim(
+            claim_id="top_quartile_signal_grounded_reply_rate_range",
+            label="Signal-grounded outbound reply rate (top quartile, range)",
+            value={"range": [0.07, 0.12]},
+            unit="proportion",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation=(
+                "Tenacious internal baseline numbers for top-quartile signal-grounded reply rate."
+            ),
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
+    claims.append(
+        Claim(
+            claim_id="conversion_rates_discovery_to_proposal_range",
+            label="Discovery→proposal conversion rate (range)",
+            value={"range": [0.30, 0.50]},
+            unit="proportion",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation=(
+                "Tenacious internal baseline numbers for discovery-call-to-proposal conversion."
+            ),
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
+    claims.append(
+        Claim(
+            claim_id="conversion_rates_proposal_to_close_range",
+            label="Proposal→close conversion rate (range)",
+            value={"range": [0.20, 0.30]},
+            unit="proportion",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation="Tenacious internal baseline numbers for proposal-to-close conversion.",
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
+    claims.append(
+        Claim(
+            claim_id="acv_talent_outsourcing_range",
+            label="Talent outsourcing ACV (range)",
+            value={"range_usd": [240_000, 720_000]},
+            unit="usd",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation="Tenacious internal ACV range for talent outsourcing engagements.",
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
+    claims.append(
+        Claim(
+            claim_id="acv_project_consulting_range",
+            label="Project consulting ACV (range)",
+            value={"range_usd": [80_000, 300_000]},
+            unit="usd",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation="Tenacious internal ACV range for project consulting engagements.",
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
+    claims.append(
+        Claim(
+            claim_id="tau2_published_reference_pass_at_1",
+            label="Published τ²-Bench retail reference pass@1 (point reference)",
+            value=0.42,
+            unit="proportion",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation=(
+                "Voice-agent conversational pass@1 ceiling (~42%) recorded in Tenacious "
+                "baseline numbers."
+            ),
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
+
+    # Annualized impact scenarios (Tenacious): segment-based revenue, keyed on adoption scope.
+    def _annualized_revenue_impact(
+        *,
+        scenario_claim_id: str,
+        label: str,
+        segments_included: list[str],
+        discovery_calls_per_week: int,
+    ) -> Claim:
+        weeks_per_year = 50
+        discovery_calls_per_year = discovery_calls_per_week * weeks_per_year
+
+        d2p_lo, d2p_hi = 0.30, 0.50
+        p2c_lo, p2c_hi = 0.20, 0.30
+
+        proposals_lo = discovery_calls_per_year * d2p_lo
+        proposals_hi = discovery_calls_per_year * d2p_hi
+        closes_lo = proposals_lo * p2c_lo
+        closes_hi = proposals_hi * p2c_hi
+
+        outsourcing_lo, outsourcing_hi = 240_000, 720_000
+        consulting_lo, consulting_hi = 80_000, 300_000
+
+        includes_consulting = any("Segment 4" in s for s in segments_included)
+        includes_outsourcing = any(
+            ("Segment 1" in s) or ("Segment 2" in s) or ("Segment 3" in s)
+            for s in segments_included
+        )
+
+        acv_lo = min(
+            [outsourcing_lo] * int(includes_outsourcing)
+            + [consulting_lo] * int(includes_consulting)
+        )
+        acv_hi = max(
+            [outsourcing_hi] * int(includes_outsourcing)
+            + [consulting_hi] * int(includes_consulting)
+        )
+
+        revenue_lo = closes_lo * acv_lo
+        revenue_hi = closes_hi * acv_hi
+        revenue_mid = (revenue_lo + revenue_hi) / 2
+
+        return Claim(
+            claim_id=scenario_claim_id,
+            label=f"Annualized revenue impact — {label}",
+            value={
+                "segments_included": segments_included,
+                "assumptions": {
+                    "discovery_calls_per_week": discovery_calls_per_week,
+                    "weeks_per_year": weeks_per_year,
+                    "discovery_to_proposal_rate_range": [d2p_lo, d2p_hi],
+                    "proposal_to_close_rate_range": [p2c_lo, p2c_hi],
+                    "outsourcing_acv_range_usd": [outsourcing_lo, outsourcing_hi],
+                    "consulting_acv_range_usd": [consulting_lo, consulting_hi],
+                },
+                "computed": {
+                    "discovery_calls_per_year": discovery_calls_per_year,
+                    "proposals_per_year_range": [proposals_lo, proposals_hi],
+                    "closed_deals_per_year_range": [closes_lo, closes_hi],
+                    "annual_revenue_range_usd": [revenue_lo, revenue_hi],
+                    "annual_revenue_midpoint_usd": revenue_mid,
+                },
+            },
+            unit="usd_per_year",
+            sources=[
+                {"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"},
+                {
+                    "kind": "document",
+                    "path": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md",
+                },
+            ],
+            derivation=(
+                "Revenue model per Tenacious Act V: discovery calls/week × 50 weeks → "
+                "discovery calls/year; apply baseline conversion ranges to estimate closed "
+                "deals/year; multiply by ACV range. Discovery calls/week is an explicit "
+                "adoption-scenario assumption."
+            ),
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+
+    claims.append(
+        _annualized_revenue_impact(
+            scenario_claim_id="annualized_revenue_impact_one_segment",
+            label="one segment only (2 discovery calls/week)",
+            segments_included=["Segment 2"],
+            discovery_calls_per_week=2,
+        )
+    )
+    claims.append(
+        _annualized_revenue_impact(
+            scenario_claim_id="annualized_revenue_impact_two_segments",
+            label="two segments (6 discovery calls/week)",
+            segments_included=["Segment 1", "Segment 2"],
+            discovery_calls_per_week=6,
+        )
+    )
+    claims.append(
+        _annualized_revenue_impact(
+            scenario_claim_id="annualized_revenue_impact_all_four_segments",
+            label="all four segments (12 discovery calls/week)",
+            segments_included=["Segment 1", "Segment 2", "Segment 3", "Segment 4"],
+            discovery_calls_per_week=12,
+        )
+    )
+
+    # Pilot scope recommendation (Tenacious Act V required fields)
+    claims.append(
+        Claim(
+            claim_id="pilot_recommendation",
+            label="Pilot scope recommendation (30 days)",
+            value={
+                "segment": "Segment 2",
+                "duration_days": 30,
+                "discovery_calls_per_week_assumption": 2,
+                "weekly_budget_usd": 25,
+                "success_criterion": (
+                    "≥5 discovery calls booked with qualified Segment 2 prospects within 30 days"
+                ),
+            },
+            unit="object",
+            sources=[{"kind": "document", "path": "tenacious_sales_data/seed/baseline_numbers.md"}],
+            derivation=(
+                "Pilot fields required by Tenacious Act V. Weekly budget is a conservative cap "
+                "aligned with the CPL target (≤ $5) and is explicitly an assumption in the memo."
+            ),
+            recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+        )
+    )
 
     # Auto-opt sealed baseline (required)
     auto_dirs = sorted(Path("eval/runs/auto_opt").glob("*"))
