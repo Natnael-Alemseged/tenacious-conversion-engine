@@ -8,6 +8,8 @@ from agent.enrichment.artifacts import (
     write_discovery_call_context_brief,
     write_hiring_signal_brief,
 )
+from agent.enrichment.layoffs import _approximate_headcount
+from agent.enrichment.layoffs import check as layoffs_check
 from agent.enrichment.pipeline import _classify_segment, run
 from agent.enrichment.schemas import HiringSignalBrief
 
@@ -345,3 +347,30 @@ def test_funding_with_zero_open_roles_abstains_p004() -> None:
     funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
     seg = _classify(funding=funding, open_roles=0)
     assert seg == 0, f"Segment 1 must not fire with 0 open roles, got {seg}"
+
+
+def test_approximate_headcount_enum() -> None:
+    assert _approximate_headcount("c_00051_00100") == 75
+    assert _approximate_headcount("c_00101_00250") == 175
+    assert _approximate_headcount(None) is None
+    assert _approximate_headcount("unknown_value") is None
+
+
+def test_layoff_percentage_fallback_computed_p027(tmp_path) -> None:
+    csv_content = "Company,Date,Laid_Off_Count,Percentage\nTestCo,2026-03-01,50,\n"
+    csv_file = tmp_path / "layoffs.csv"
+    csv_file.write_text(csv_content)
+    results = layoffs_check("TestCo", path=str(csv_file), employee_count_enum="c_00251_00500")
+    assert results[0]["percentage"] != ""
+    pct = float(results[0]["percentage"])
+    assert 10.0 < pct < 20.0, f"Expected ~13%, got {pct}"
+    assert results[0].get("percentage_source") == "computed"
+
+
+def test_layoff_percentage_preserved_when_present(tmp_path) -> None:
+    csv_content = "Company,Date,Laid_Off_Count,Percentage\nTestCo,2026-03-01,50,22\n"
+    csv_file = tmp_path / "layoffs.csv"
+    csv_file.write_text(csv_content)
+    results = layoffs_check("TestCo", path=str(csv_file), employee_count_enum="c_00251_00500")
+    assert results[0]["percentage"] == "22"
+    assert results[0].get("percentage_source") == "reported"

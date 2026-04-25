@@ -442,33 +442,35 @@ def probe_P017() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P027() -> tuple[int, list[str], list[str]]:
-    """layoffs.check() returns null percentage when CSV field is empty."""
-    from agent.enrichment.layoffs import _PCT_COLS, _col
+    """Layoff percentage fallback is computed from headcount when CSV field is blank."""
+    import os
+    import tempfile
 
-    # Simulate a CSV row where percentage is blank
-    test_rows = [
-        {"Company": "TestCo", "Date": "2026-03-01", "Laid_Off_Count": "50", "Percentage": ""},
-        {"Company": "TestCo", "Date": "2026-03-01", "Laid_Off_Count": "50", "Percentage": "null"},
-        {"Company": "TestCo", "Date": "2026-03-01", "Laid_Off_Count": "50"},
-    ]
+    from agent.enrichment.layoffs import check as layoffs_check
+
+    csv_content = (
+        "Company,Date,Laid_Off_Count,Percentage\nTestCo,2026-03-01,50,\nTestCo,2026-03-01,50,null\n"
+    )
     triggered, trace_ids, details = 0, [], []
-    for row in test_rows:
-        tid = _trace_id()
-        pct = _col(row, _PCT_COLS)
-        # The pipeline passes through raw string — downstream code must handle empty/null
-        # Probe confirms the empty string is returned (not computed from headcount)
-        if pct not in ("", "null", None):
-            triggered += 1
-            details.append(f"Row {row} → percentage={pct!r} (expected empty/null)")
-        else:
-            # This is the data gap: no headcount-based fallback computed
-            # Mark as triggered to flag the missing guard
-            triggered += 1
-            details.append(
-                f"percentage='{pct}' is not computed from headcount "
-                f"(laid_off_count={row.get('Laid_Off_Count')}) — overclaim risk confirmed"
-            )
-        trace_ids.append(tid)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_content)
+        tmp = f.name
+    try:
+        for _ in range(TRIALS):
+            tid = _trace_id()
+            results = layoffs_check("TestCo", path=tmp, employee_count_enum="c_00251_00500")
+            for r in results:
+                pct = r.get("percentage", "")
+                src = r.get("percentage_source", "")
+                if pct in ("", "null", None):
+                    triggered += 1
+                    details.append(f"percentage not computed from headcount: {r}")
+                elif src != "computed":
+                    triggered += 1
+                    details.append(f"Expected source='computed', got {src!r}: {r}")
+            trace_ids.append(tid)
+    finally:
+        os.unlink(tmp)
     return triggered, trace_ids, details
 
 

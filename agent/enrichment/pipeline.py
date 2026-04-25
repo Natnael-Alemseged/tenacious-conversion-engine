@@ -170,7 +170,10 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     funding = crunchbase.recent_funding(company_name)
     funding_confidence, funding_meta = score_funding_confidence(funding=funding, cb=cb)
 
-    layoff_events = layoffs.check(company_name)
+    layoff_events = layoffs.check(
+        company_name,
+        employee_count_enum=(cb or {}).get("num_employees_enum"),
+    )
     layoffs_confidence, layoffs_meta = score_layoffs_confidence(layoff_events=layoff_events, cb=cb)
 
     leader_changes = crunchbase.leadership_changes(company_name)
