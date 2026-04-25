@@ -104,15 +104,21 @@ def _classify_segment(
     ai_score: int,
     open_roles: int,
 ) -> int:
-    """Return ICP segment with correct priority: layoff > funding > leadership > AI."""
-    if layoff_events:
+    """Return ICP segment.
+
+    See `tenacious_sales_data/seed/icp_definition.md` § Classification rules.
+    """
+    has_funding = bool(funding)
+    if layoff_events and has_funding:
         return 2
-    if funding and open_roles >= SEGMENT_1_MIN_OPEN_ROLES:
-        return 1
     if leader_changes:
         return 3
     if ai_score >= 2:
         return 4
+    if has_funding and open_roles >= SEGMENT_1_MIN_OPEN_ROLES:
+        return 1
+    if layoff_events:
+        return 2
     return 0
 
 
