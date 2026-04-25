@@ -133,6 +133,18 @@ def test_duplicate_sms_message_id_is_ignored(tmp_path, monkeypatch) -> None:
         "outbound_sink_phone",
         "+15555550123",
     )
+    # Avoid real HubSpot integration calls in webhook tests.
+    monkeypatch.setattr(
+        webhooks.orchestrator,
+        "hubspot",
+        type("HS", (), {"upsert_contact": lambda *a, **k: {"id": "test"}})(),
+    )
+    # Avoid real SMS provider calls in webhook tests.
+    monkeypatch.setattr(
+        webhooks.orchestrator,
+        "sms",
+        type("SMS", (), {"send_sms": lambda *a, **k: {"status": "sent"}})(),
+    )
     webhooks._recent_sms_events.clear()
     webhooks._recent_sms_events_order.clear()
 
