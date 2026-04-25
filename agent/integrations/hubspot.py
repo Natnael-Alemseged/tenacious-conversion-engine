@@ -57,12 +57,39 @@ class HubSpotClient:
             return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=30)
         try:
             asyncio.get_running_loop()
-            # Already inside a running event loop (e.g. FastAPI). asyncio.run()
-            # would raise, so spin up a thread with its own loop instead.
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(asyncio.run, coro).result(timeout=30)
         except RuntimeError:
             return asyncio.run(coro)
+        # Already inside a running event loop (e.g. FastAPI). asyncio.run()
+        # would raise, so spin up a thread with its own loop instead.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result(timeout=30)
+
+    def _unknown_property_names(self, exc: HubSpotMcpError) -> set[str]:
+        detail = exc.detail or str(exc)
+        payload: dict[str, Any] | None = None
+        json_start = detail.find("{")
+        if json_start != -1:
+            try:
+                payload = json.loads(detail[json_start:])
+            except json.JSONDecodeError:
+                payload = None
+        if payload is None:
+            return set()
+        if not payload.get("errors") and isinstance(payload.get("message"), str):
+            message = payload["message"]
+            nested_start = message.find("{")
+            if nested_start != -1:
+                try:
+                    payload = json.loads(message[nested_start:])
+                except json.JSONDecodeError:
+                    pass
+        names: set[str] = set()
+        for error in payload.get("errors", []):
+            context = error.get("context", {})
+            for name in context.get("propertyName", []):
+                if name:
+                    names.add(str(name))
+        return names
 
     async def _call_tool(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if self._session is not None:
@@ -165,13 +192,14 @@ class HubSpotClient:
             text = getattr(item, "text", None)
             if text:
                 texts.append(text)
-                try:
-                    return json.loads(text)
-                except json.JSONDecodeError:
-                    continue
-        if getattr(result, "isError", False):
+        if getattr(result, "isError", False) is True:
             message = "\n".join(texts) if texts else "Unknown HubSpot MCP error"
             raise HubSpotMcpError(message)
+        for text in texts:
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                continue
         if texts:
             return {"raw": "\n".join(texts)}
         return {}
@@ -195,16 +223,30 @@ class HubSpotClient:
 
         if "@" in identifier:
             props["email"] = identifier
-            existing = self._search_contact(property_name="email", value=identifier)
+
+            def search_fn() -> dict[str, Any] | None:
+                return self._search_contact(property_name="email", value=identifier)
+        else:
+            props["phone"] = identifier
+
+            def search_fn() -> dict[str, Any] | None:
+                return self.search_contact_by_phone(identifier)
+
+        existing = search_fn()
+        try:
             if existing:
                 return self.update_contact(existing["id"], props)
             return self._create_contact(props)
-
-        props["phone"] = identifier
-        existing = self.search_contact_by_phone(identifier)
-        if existing:
-            return self.update_contact(existing["id"], props)
-        return self._create_contact(props)
+        except HubSpotMcpError as exc:
+            unknown = self._unknown_property_names(exc)
+            retryable = {key: value for key, value in props.items() if key not in unknown}
+            # If HubSpot rejects optional custom fields that aren't provisioned
+            # in this portal yet, retry once with only supported properties.
+            if not unknown or retryable == props:
+                raise
+            if existing:
+                return self.update_contact(existing["id"], retryable)
+            return self._create_contact(retryable)
 
     def _search_contact(self, *, property_name: str, value: str) -> dict[str, Any] | None:
         result = self._call(

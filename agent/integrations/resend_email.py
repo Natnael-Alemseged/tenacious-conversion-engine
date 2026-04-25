@@ -50,9 +50,12 @@ class ResendClient:
         to_email: str,
         subject: str,
         html: str,
+        text: str | None = None,
         reply_to: str | None = None,
         from_email: str | None = None,
         tags: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "from": from_email or self.from_email,
@@ -60,11 +63,15 @@ class ResendClient:
             "subject": subject,
             "html": html,
         }
+        if text is not None:
+            payload["text"] = text
         effective_reply_to = reply_to or self.reply_to_email
         if effective_reply_to:
             payload["reply_to"] = effective_reply_to
         if tags:
             payload["tags"] = [{"name": k, "value": v} for k, v in tags.items()]
+        if headers:
+            payload["headers"] = headers
 
         _log.debug(
             "resend.send_email",
@@ -77,7 +84,8 @@ class ResendClient:
             },
         )
         try:
-            response = self.client.post("/emails", json=payload)
+            request_headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+            response = self.client.post("/emails", json=payload, headers=request_headers)
             response.raise_for_status()
             body = response.json()
             _log.info(

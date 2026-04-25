@@ -170,3 +170,77 @@ def test_create_contact_raises_on_empty_results() -> None:
         client.upsert_contact("lead@example.com", source="email")
 
     assert excinfo.value.error_kind == "empty_results"
+
+
+def test_upsert_contact_retries_without_unknown_properties() -> None:
+    client = HubSpotClient(access_token="test-token")
+    calls: list[tuple[str, dict]] = []
+    state = {"searches": 0, "creates": 0}
+
+    async def mock_call_tool(tool: str, arguments: dict[str, Any]) -> Any:
+        calls.append((tool, arguments))
+        if tool == "hubspot-search-objects":
+            state["searches"] += 1
+            data = {"results": []}
+        elif tool == "hubspot-batch-create-objects":
+            state["creates"] += 1
+            if state["creates"] == 1:
+                data = {
+                    "status": "error",
+                    "message": (
+                        'HubSpot API Error: 400 Bad Request - {"errors":[{"message":"Property '
+                        '\\"segment_confidence\\" does not exist","code":"PROPERTY_DOESNT_EXIST",'
+                        '"context":{"propertyName":["segment_confidence"]}}]}'
+                    ),
+                }
+                item = MagicMock()
+                item.text = json.dumps(data)
+                result = MagicMock()
+                result.content = [item]
+                result.isError = True
+                return result
+            data = {"results": [{"id": "123"}]}
+        else:
+            data = {"results": []}
+
+        item = MagicMock()
+        item.text = json.dumps(data)
+        result = MagicMock()
+        result.content = [item]
+        result.isError = False
+        return result
+
+    mock_session = MagicMock()
+    mock_session.call_tool = mock_call_tool
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    client._loop = loop
+    client._thread = thread
+    client._session = mock_session
+    client._stop_event = asyncio.Event()
+
+    result = client.upsert_contact(
+        "lead@example.com",
+        source="email",
+        properties={"segment_confidence": "0.2", "last_email_subject": "hello"},
+    )
+
+    assert result["id"] == "123"
+    create_calls = [args for tool, args in calls if tool == "hubspot-batch-create-objects"]
+    assert len(create_calls) == 2
+    assert "segment_confidence" in create_calls[0]["inputs"][0]["properties"]
+    assert "segment_confidence" not in create_calls[1]["inputs"][0]["properties"]
+
+
+def test_decode_result_ignores_truthy_mock_iserror_flag() -> None:
+    client = HubSpotClient(access_token="test-token")
+    item = MagicMock()
+    item.text = json.dumps({"results": [{"id": "123"}]})
+    result = MagicMock()
+    result.content = [item]
+
+    decoded = client._decode_result(result)
+
+    assert decoded["results"][0]["id"] == "123"

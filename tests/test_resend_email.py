@@ -16,6 +16,7 @@ def test_send_email_uses_resend_api(monkeypatch) -> None:
         captured["method"] = request.method
         captured["path"] = request.url.path
         captured["authorization"] = request.headers.get("Authorization")
+        captured["idempotency_key"] = request.headers.get("Idempotency-Key")
         captured["json"] = json.loads(request.read().decode("utf-8"))
         return httpx.Response(200, json={"id": "email_123"})
 
@@ -33,6 +34,9 @@ def test_send_email_uses_resend_api(monkeypatch) -> None:
         subject="Hello",
         html="<p>Hi</p>",
         reply_to="owner@example.com",
+        text="Hi",
+        headers={"In-Reply-To": "<msg-123>", "References": "<msg-122> <msg-123>"},
+        idempotency_key="reply-msg-123",
     )
 
     assert response["id"] == "email_123"
@@ -41,6 +45,10 @@ def test_send_email_uses_resend_api(monkeypatch) -> None:
     assert captured["authorization"] == "Bearer re_test"
     assert captured["json"]["from"] == "team@example.com"
     assert captured["json"]["reply_to"] == "owner@example.com"
+    assert captured["json"]["text"] == "Hi"
+    assert captured["json"]["headers"]["In-Reply-To"] == "<msg-123>"
+    assert captured["json"]["headers"]["References"] == "<msg-122> <msg-123>"
+    assert captured["idempotency_key"] == "reply-msg-123"
 
 
 def test_send_email_http_error_sets_error_kind(monkeypatch) -> None:
