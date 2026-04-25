@@ -10,7 +10,7 @@ from agent.core.config import settings
 _COMPANY_COLS = ("Company", "company", "company_name")
 _DATE_COLS = ("Date", "date", "Date Added", "date_added", "Announced Date")
 _COUNT_COLS = ("Laid_Off_Count", "laid_off_count", "Total Laid Off", "# Laid Off")
-_PCT_COLS = ("Percentage", "percentage", "Percentage", "% Laid Off")
+_PCT_COLS = ("Percentage", "percentage", "% Laid Off")
 
 _EMP_ENUM_MIDPOINTS: dict[str, int] = {
     "c_00001_00010": 5,
