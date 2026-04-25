@@ -424,12 +424,14 @@ class LeadOrchestrator:
         icp_segment: int | None = None,
         ai_maturity_score: int | None = None,
         confidence: float | None = None,
+        segment_confidence: float | None = None,
         crunchbase_id: str | None = None,
         bench_to_brief_gate_passed: bool = True,
     ) -> dict[str, Any]:
         seg = icp_segment if icp_segment in _SUBJECT_SUFFIXES else 0
         subject = _build_subject(company_name, seg)
-        phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
+        phrasing_score = segment_confidence if segment_confidence is not None else confidence
+        phrasing = confidence_phrasing(phrasing_score) if phrasing_score is not None else "hedged"
         opener = _segment_opener(company_name, seg, phrasing)
 
         try:
@@ -504,6 +506,7 @@ class LeadOrchestrator:
             "icp_segment": icp_segment,
             "ai_maturity_score": ai_maturity_score,
             "confidence": confidence,
+            "segment_confidence": segment_confidence,
         }
         with self.langfuse.trace_workflow("send_outbound_email", trace_payload):
             with self.langfuse.span(
