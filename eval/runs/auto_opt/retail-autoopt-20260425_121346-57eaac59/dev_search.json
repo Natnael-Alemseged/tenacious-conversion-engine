@@ -1,0 +1,22 @@
+[
+  {
+    "label": "temp0",
+    "agent_llm": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+    "agent_llm_args": {
+      "temperature": 0.0
+    },
+    "dev_results_path": "/Users/natnaelalemseged/code-projects/backend/tau2-bench/data/simulations/ce-autoopt-retail-train-dev-temp0-20260425_120943-0d1cd3c8/results.json",
+    "dev_pass_at_1": 0.2,
+    "dev_cost_usd": 0.03819654
+  },
+  {
+    "label": "temp0_2",
+    "agent_llm": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+    "agent_llm_args": {
+      "temperature": 0.2
+    },
+    "dev_results_path": "/Users/natnaelalemseged/code-projects/backend/tau2-bench/data/simulations/ce-autoopt-retail-train-dev-temp0_2-20260425_121031-399fedc9/results.json",
+    "dev_pass_at_1": 0.4,
+    "dev_cost_usd": 0.04067114000000001
+  }
+]

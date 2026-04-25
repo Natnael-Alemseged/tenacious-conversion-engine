@@ -1,0 +1,26 @@
+{
+  "currency": "USD",
+  "window": {
+    "kind": "rollup"
+  },
+  "invoices": [
+    {
+      "source_path": "eval/runs/auto_opt/retail-autoopt-20260425_121346-57eaac59/invoice_summary.json",
+      "currency": "USD",
+      "total_cost_usd": 0.2316939675,
+      "line_items": [
+        {
+          "kind": "llm_upstream_inference",
+          "provider": "litellm/openrouter",
+          "amount_usd": 0.2316939675,
+          "detail": "Sum of cost_details.upstream_inference_cost across tau2 results.json payloads."
+        }
+      ],
+      "window": {
+        "kind": "single_run",
+        "run_id": "retail-autoopt-20260425_121346-57eaac59"
+      }
+    }
+  ],
+  "total_cost_usd": 0.2316939675
+}
