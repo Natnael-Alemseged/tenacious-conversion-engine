@@ -949,20 +949,24 @@ class LeadOrchestrator:
                 can_route_reply = settings.outbound_enabled or settings.outbound_sink_phone
                 if can_route_reply:
                     reply_text = _build_inbound_sms_reply(event=event)
-                    if bool((state or {}).get("email_replied")):
-                        reply_result = self.send_warm_lead_sms(
-                            to_phone=event.from_number,
-                            company_name=_company_name_from_email(f"team@{event.to}.example")
-                            if event.to
-                            else "your team",
-                            scheduling_hint=reply_text,
-                            prior_email_replied=True,
-                            message_override=reply_text,
-                            thread_id=thread_id or None,
+                    # Inbound SMS replies are always allowed to receive a reply message.
+                    # Warm-lead gating applies to proactive outbound SMS nudges, not reactive
+                    # replies.
+                    try:
+                        routed_to, _audit = _outbound_route(
+                            intended_to=str(event.from_number), channel="sms"
                         )
-                        result["reply"] = reply_result
-                    else:
-                        result["reply"] = {"status": "skipped", "reason": "not_warm_lead"}
+                        sms_result = self.sms.send_sms(to_phone=routed_to, message=reply_text)
+                        result["reply"] = sms_result
+                    except Exception as exc:
+                        self._log_workflow_failure(
+                            workflow="handle_sms",
+                            phase="reply_sms_send",
+                            identifier=event.from_number,
+                            channel="sms",
+                            exc=exc,
+                        )
+                        raise
                 else:
                     result["reply"] = {
                         "status": "skipped",
