@@ -1,0 +1,8 @@
+{
+  "run_id": "retail-test-20260425_162224-9fb5ef97",
+  "domain": "retail",
+  "agent_llm": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+  "user_llm": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+  "task_split_name": "test",
+  "generated_at": "2026-04-25T16:22:24Z"
+}

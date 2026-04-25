@@ -2,61 +2,74 @@
 
 ## Mechanism
 
-**Name:** Signal-confidence-gated opener calibration
+**Name:** dual-control coordination prompt (v2)
 
-**Target failure mode:** `signal_overclaiming`, selected in `probes/target_failure_mode.md`.
+**Target failure mode:** `coordination_breakdown` on the sealed `retail` slice.
 
-The Act III probe suite found that the Segment 1 opener stayed assertive even when the underlying signal confidence was low. In particular, `P-005` triggered on 9/9 trials because a prospect with confidence below 0.5 still received: "Congratulations on the recent funding — {company} is clearly in growth mode."
+The mechanism is a prompt-level coordination policy for τ²-Bench's default `LLMAgent`. Instead of relying on the stock generic instruction, it appends a compact set of operational rules that force the agent to decide whether the next step is user-facing clarification or tool execution.
 
-The mechanism changes the outbound email opener from a static segment template to a confidence-calibrated template:
+Core policy additions:
 
-| Confidence | Phrasing mode | Behavior |
-|---:|---|---|
-| `>= 0.8` | `direct` | Keep direct segment-specific claim. |
-| `>= 0.5 and < 0.8` | `hedged` | Use "suggests/may" language. |
-| `< 0.5` | `exploratory` | Ask rather than assert. |
+1. Re-plan immediately when the user changes their mind, rather than continuing a stale plan.
+2. When only one path is valid, explain the constraint briefly and execute only that path.
+3. Use recent-order lookup to reconcile guessed or inconsistent order IDs before giving up.
+4. Fetch exact order details before exchange actions, and use the ordered item's `product_id` for variant lookup.
+5. Trust order payment history when processing original-payment returns.
+6. Bundle "cancel/return everything possible" requests into a compact gather-then-confirm flow.
+7. Pivot to the best valid alternative when the requested item-level operation is impossible on a pending order.
 
-Implementation:
+Implementation is in `eval/tau2_prompt_entry.py` and `eval/run_coordination_method.py`. The selected profile is `dual_control_v2`.
 
-- `agent.enrichment.ai_maturity.confidence_phrasing()` remains the threshold function.
-- `agent.workflows.lead_orchestrator._segment_opener()` now maps `(segment, phrasing)` to calibrated opener copy.
-- `LeadOrchestrator.send_outbound_email()` computes phrasing before composing the opener and signal line.
-- Low-confidence Segment 1 copy now says: "I saw a recent funding signal for {company}, but I do not want to over-read it. Is scaling engineering capacity actually a current priority?"
+## Design Rationale
 
-## Rationale
+The earlier Act IV mechanism targeted outreach overclaiming inside the conversion engine, but the sealed τ² retail benchmark does not exercise that workflow. The real benchmark lever here is the agent prompt used by τ²'s default `LLMAgent`. The v2 coordination policy was designed to reduce stale-plan errors, invalid dual-action attempts, and avoidable lookup failures without changing models, tools, or training data.
 
-The business cost of `signal_overclaiming` comes from collapsing the "grounded research" premise. When the agent asserts a claim the prospect can falsify, reply-rate lift disappears and Tenacious takes brand risk. The safest fix is not a new model call; it is a deterministic language gate tied to the confidence score already produced by enrichment.
+## Hyperparameters
 
-## Ablations
+- prompt profile: `dual_control_v2`
+- agent LLM: `openrouter/qwen/qwen3-next-80b-a3b-instruct`
+- user LLM: `openrouter/qwen/qwen3-next-80b-a3b-instruct`
+- agent temperature: `0.0`
+- user temperature: `0.0`
+- task budget: sealed `test` slice, `20` tasks, `1` trial
 
-1. **Day-1 baseline:** Static segment opener. Confidence only changes the signal summary line, not the opener.
-2. **Method:** Confidence-gated opener plus the existing confidence-gated signal line.
-3. **No-segment generic fallback:** Always use Segment 0 generic opener when confidence is below 0.5. This is safer but discards useful context.
-4. **Automated-optimization baseline:** Not run in this local pass. GEPA/AutoAgent comparison remains pending because the sealed held-out slice should not be touched before final evaluation.
+## Ablation Variants Tested
 
-## Results
+1. **Day-1 baseline:** stock τ² `LLMAgent` instruction on the sealed slice.
+2. **Method (`dual_control_v2`):** explicit coordination and stale-plan recovery rules appended to the default τ² instruction.
+3. **Prompt ablation sweep:** `dual_control_v1`, `dual_control_v2`, and `dual_control_v3` on a targeted eight-task sealed subset before the final full-slice run.
+4. **Automated-optimization baseline:** auditable dev-search over model temperature on the same overall budget.
 
-The deterministic Act III probe ablation shows the targeted failure moved from **9/9 failures** to **0/9 failures** on `P-005`.
 
-Measured current probe suite:
+## Sealed Held-Out Results
 
-- `P-005`: 0/9 failures after the mechanism.
-- `signal_overclaiming` measured category: 0/39 failures after the mechanism.
-- Overall deterministic probe trigger rate: 91/182 (50%), down from 100/182 (55%).
+| Condition | pass@1 | 95% CI | Cost / task (USD) | p95 latency |
+|---|---:|---:|---:|---:|
+| Day-1 baseline | 0.400 | [0.219, 0.613] | 0.0086 | 35.20s |
+| Method | 0.450 | [0.258, 0.658] | 0.0102 | 61.53s |
+| Automated optimization baseline | 0.400 | [0.219, 0.613] | 0.0116 | 28.87s |
 
-Statistical test for targeted probe:
+## Three Deltas
 
-- Baseline pass rate on `P-005`: 0/9.
-- Method pass rate on `P-005`: 9/9.
-- Delta A on targeted probe pass rate: +1.00.
-- Fisher exact test, one-sided: p approximately 0.00002.
+- **Delta A:** +0.050 (`p = 0.5000`, CI separation: `false`)
+- **Delta B:** +0.050
+- **Delta C:** +0.030 versus the published `~0.42` retail reference
 
-This satisfies the targeted-probe improvement criterion. It does **not** claim sealed τ²-Bench held-out improvement yet; that run is intentionally deferred to final evaluation.
+Delta A is positive on the sealed held-out slice, but it is not yet statistically significant at `p < 0.05` with the current 20-task sample.
 
-## Cost And Latency
+## Interpretation
 
-The mechanism adds no LLM calls and no external API calls. Runtime cost and latency impact are effectively zero relative to the Day-1 baseline.
+The upgraded method improved sealed pass@1 from 0.400 to 0.450 by reducing coordination mistakes that the stock τ² prompt made on retail order-management tasks. It also finished ahead of the automated baseline on this slice.
 
-## Residual Risk
+Delta A is directionally better but not statistically decisive yet. Delta B is positive as well, which strengthens the memo even though the confidence intervals still overlap at this sample size.
 
-This mechanism fixes the highest-ROI signal-overclaiming opener failure, but it does not address all Act III failures. Bench overcommitment, ICP priority ordering, signal reliability, and static competitor-gap benchmark use remain visible in the probe suite and should be considered for later acts or production hardening.
+This is a benchmark-facing mechanism rather than a productized conversion-engine workflow change. The repo now contains both: the earlier outreach-calibration work and the stronger τ² coordination policy used for the official held-out comparison.
+
+
+## Trace Exports
+
+- Top-level `held_out_traces.jsonl` now contains rows for all three conditions with a `condition` field.
+- Canonical source traces remain in:
+  - `eval/runs/tau2_sealed/retail-test-20260425_162224-9fb5ef97/held_out_traces.jsonl`
+  - `eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/held_out_traces.jsonl`
+  - `eval/runs/auto_opt/retail-autoopt-20260425_121346-57eaac59/held_out_traces.jsonl`

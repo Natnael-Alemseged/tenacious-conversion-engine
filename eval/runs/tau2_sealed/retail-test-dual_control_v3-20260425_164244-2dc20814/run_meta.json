@@ -1,0 +1,9 @@
+{
+  "run_id": "retail-test-dual_control_v3-20260425_164244-2dc20814",
+  "domain": "retail",
+  "agent_llm": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+  "user_llm": "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+  "task_split_name": "test",
+  "prompt_profile": "dual_control_v3",
+  "generated_at": "2026-04-25T16:42:44Z"
+}

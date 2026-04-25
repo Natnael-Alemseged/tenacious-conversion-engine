@@ -14,7 +14,7 @@ FastAPI backend scaffold for the Tenacious sales-automation conversion engine ch
 - minimal SMS compliance controls for `STOP`, `HELP`, `UNSUBSCRIBE`, and `START`
 - integrations for HubSpot CRM, Cal.com booking, and Langfuse tracing
 - enrichment pipeline for Crunchbase firmographics, layoffs.fyi, job-post velocity, and AI maturity scoring (0–3)
-- `tau2-bench` evaluation harness (dev split only; held-out partition sealed)
+- `tau2-bench` evaluation harness plus sealed held-out and automated-baseline exports
 
 ## Architecture
 
@@ -177,7 +177,7 @@ Results are appended to `eval/score_log.json` (mean pass@1 + 95% CI) and `eval/t
 
 ## Status
 
-Interim submission candidate: Act I is complete, the core Act II loop is partially implemented, Act III is complete, and the Act IV deterministic probe ablation is complete. The repo currently covers email-first outreach, warm-lead SMS, HubSpot write-back, Cal.com booking, hiring-signal enrichment, sink-routing safety, bench gating, the Act III adversarial probe package, and confidence-gated outbound phrasing.
+Submission candidate: Act I is complete, the core Act II loop is partially implemented, Act III is complete, and the Act IV artifact package now includes sealed held-out, automated-baseline, and merged trace exports. The repo currently covers email-first outreach, warm-lead SMS, HubSpot write-back, Cal.com booking, hiring-signal enrichment, sink-routing safety, bench gating, the Act III adversarial probe package, and the tau2 coordination-prompt harness used for the sealed retail benchmark.
 
 Act II items still deferred:
 
@@ -194,10 +194,10 @@ Act III deliverables:
 
 Act IV deliverables:
 
-- `method.md` — confidence-gated opener mechanism and rationale
-- `ablation_results.json` — deterministic probe ablation results
-- `held_out_traces.jsonl` — probe-ablation trace summary; sealed τ²-Bench held-out remains pending final evaluation
+- `method.md` — dual-control coordination prompt (`dual_control_v2`) and rationale
+- `ablation_results.json` — sealed held-out results, confidence intervals, deltas, cost, and latency
+- `held_out_traces.jsonl` — merged sealed held-out traces for Day-1 baseline, method, and automated optimization
 
-Remaining work for final submission: sealed held-out evaluation/automated-optimization comparison and two-page decision memo (Act V).
+Remaining work for final submission: decision memo polishing and any further method iteration after reviewing the sealed results.
 
 See `baseline.md` for the eval summary and `eval/score_log.json` for the full statistical breakdown.

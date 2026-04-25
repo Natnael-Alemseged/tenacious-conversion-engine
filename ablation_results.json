@@ -1,87 +1,99 @@
 {
-  "act": "IV",
-  "method": "signal-confidence-gated opener calibration",
-  "evaluation_date": "2026-04-24",
-  "evaluation_scope": "deterministic Act III probe ablation; sealed tau2-bench held-out not run",
-  "primary_target": {
-    "failure_mode": "signal_overclaiming",
-    "probe_id": "P-005",
-    "metric": "failure_avoidance_rate"
-  },
-  "variants": [
+  "method_name": "dual-control coordination prompt (v2)",
+  "method_profile": "dual_control_coordination_v2",
+  "evaluation_scope": "sealed tau2-bench held-out slice plus automated-optimization baseline",
+  "conditions": [
     {
-      "name": "day1_static_opener_baseline",
-      "description": "Static segment opener; confidence only affects the signal summary line.",
-      "probe_id": "P-005",
-      "failures": 9,
-      "trials": 9,
-      "failure_rate": 1.0,
-      "pass_at_1": 0.0,
-      "cost_per_task_usd": 0.0,
-      "p95_latency_ms": 0,
-      "notes": "Baseline measured by Act III probe before mechanism."
+      "key": "method",
+      "name": "method",
+      "description": "Coordination-focused tau2 prompt profile with stale-plan recovery and explicit action-selection rules.",
+      "tasks": 20,
+      "successes": 9,
+      "failures": 11,
+      "pass_at_1": 0.45,
+      "ci_95": {
+        "low": 0.25819502085709295,
+        "high": 0.6579179916924003
+      },
+      "cost_per_task_usd": 0.010193030499999998,
+      "total_cost_usd": 0.20386060999999997,
+      "sealed_cost_usd": 0.20386060999999997,
+      "invoice_total_usd": null,
+      "p95_latency_s": 61.52755445800722,
+      "traces_path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/held_out_traces.jsonl",
+      "results_path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/trial_0_results.json",
+      "run_meta_path": "eval/runs/tau2_sealed/retail-test-dual_control_v2-20260425_164711-d86d826b/run_meta.json",
+      "generated_at": "2026-04-25T16:47:11Z"
     },
     {
-      "name": "confidence_gated_opener_method",
-      "description": "Segment opener changes from direct to hedged/exploratory based on confidence_phrasing().",
-      "probe_id": "P-005",
-      "failures": 0,
-      "trials": 9,
-      "failure_rate": 0.0,
-      "pass_at_1": 1.0,
-      "cost_per_task_usd": 0.0,
-      "p95_latency_ms": 0,
-      "notes": "Measured by scripts/run_probes.py after mechanism."
+      "key": "day1_baseline",
+      "name": "day1_baseline",
+      "description": "Static segment opener Day-1 baseline on the sealed held-out slice.",
+      "tasks": 20,
+      "successes": 8,
+      "failures": 12,
+      "pass_at_1": 0.4,
+      "ci_95": {
+        "low": 0.21880396741419272,
+        "high": 0.613422057684794
+      },
+      "cost_per_task_usd": 0.008615976374999997,
+      "total_cost_usd": 0.17231952749999996,
+      "sealed_cost_usd": 0.17231952749999996,
+      "invoice_total_usd": null,
+      "p95_latency_s": 35.19880937499693,
+      "traces_path": "eval/runs/tau2_sealed/retail-test-20260425_162224-9fb5ef97/held_out_traces.jsonl",
+      "results_path": "eval/runs/tau2_sealed/retail-test-20260425_162224-9fb5ef97/trial_0_results.json",
+      "run_meta_path": "eval/runs/tau2_sealed/retail-test-20260425_162224-9fb5ef97/run_meta.json",
+      "generated_at": "2026-04-25T16:22:24Z"
     },
     {
-      "name": "generic_low_confidence_fallback",
-      "description": "Design variant: use only the generic Segment 0 opener below confidence 0.5.",
-      "probe_id": "P-005",
-      "failures": 0,
-      "trials": 9,
-      "failure_rate": 0.0,
-      "pass_at_1": 1.0,
-      "cost_per_task_usd": 0.0,
-      "p95_latency_ms": 0,
-      "notes": "Analytical ablation; safer but discards useful segment context."
-    },
-    {
+      "key": "automated_optimization_baseline",
       "name": "automated_optimization_baseline",
-      "description": "GEPA/AutoAgent-style optimization baseline.",
-      "probe_id": null,
-      "failures": null,
-      "trials": null,
-      "failure_rate": null,
-      "pass_at_1": null,
-      "cost_per_task_usd": null,
-      "p95_latency_ms": null,
-      "notes": "Not run in this local pass; pending sealed final evaluation."
+      "description": "Auditable dev-search over model temperature, then sealed eval with the selected config.",
+      "tasks": 20,
+      "successes": 8,
+      "failures": 12,
+      "pass_at_1": 0.4,
+      "ci_95": {
+        "low": 0.21880396741419272,
+        "high": 0.613422057684794
+      },
+      "cost_per_task_usd": 0.011584698374999999,
+      "total_cost_usd": 0.2316939675,
+      "sealed_cost_usd": 0.1528262875,
+      "invoice_total_usd": 0.2316939675,
+      "p95_latency_s": 28.872530624998035,
+      "traces_path": "eval/runs/auto_opt/retail-autoopt-20260425_121346-57eaac59/held_out_traces.jsonl",
+      "results_path": "/Users/natnaelalemseged/code-projects/backend/tau2-bench/data/simulations/ce-autoopt-retail-test-sealed-temp0_2-20260425_121123-e81455ac/results.json",
+      "run_meta_path": "eval/runs/auto_opt/retail-autoopt-20260425_121346-57eaac59/run_meta.json",
+      "generated_at": "2026-04-25T12:13:46Z"
     }
   ],
   "delta_a": {
-    "metric": "P-005 pass_at_1",
-    "baseline": 0.0,
-    "method": 1.0,
-    "delta": 1.0,
-    "test": "Fisher exact test, one-sided, baseline 0/9 pass vs method 9/9 pass",
-    "p_value_approx": 0.00002,
-    "significant_at_p_0_05": true
+    "description": "your_method pass@1 minus your_day1 baseline pass@1",
+    "method_pass_at_1": 0.45,
+    "baseline_pass_at_1": 0.4,
+    "delta": 0.04999999999999999,
+    "fisher_exact_one_sided_p_value": 0.5,
+    "significant_at_p_lt_0_05": false,
+    "ci_95_separation": false
   },
-  "category_after_method": {
-    "signal_overclaiming_failures": 0,
-    "signal_overclaiming_trials": 39,
-    "signal_overclaiming_failure_rate": 0.0,
-    "overall_deterministic_failures": 91,
-    "overall_deterministic_trials": 182,
-    "overall_deterministic_failure_rate": 0.5
+  "delta_b": {
+    "description": "your_method pass@1 minus automated-optimization baseline pass@1",
+    "method_pass_at_1": 0.45,
+    "automated_optimization_pass_at_1": 0.4,
+    "delta": 0.04999999999999999
   },
-  "sealed_held_out_status": {
-    "run": false,
-    "reason": "Repository guidance says not to run the sealed test split until final evaluation.",
-    "required_future_artifacts": [
-      "sealed tau2-bench held-out traces",
-      "automated-optimization baseline comparison",
-      "Delta B and Delta C reporting"
-    ]
+  "delta_c": {
+    "description": "your_method pass@1 minus published reference",
+    "method_pass_at_1": 0.45,
+    "published_reference_pass_at_1": 0.42,
+    "published_reference_label": "\u03c4\u00b2-Bench retail leaderboard (Feb 2026 reference ceiling)",
+    "delta": 0.030000000000000027
+  },
+  "notes": {
+    "auto_opt_cost_accounting": "Auto-opt cost-per-task includes dev-search spend plus sealed evaluation spend, because Delta B is budget-matched.",
+    "delta_b_interpretation": "Delta B is reported against the budget-matched automated baseline and should be described directly from the measured sign and magnitude in the memo."
   }
 }

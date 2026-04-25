@@ -1,16 +1,16 @@
 # Act IV Gaps And Remediation Plan
 
-This file tracks what remains after the Act IV deterministic probe ablation. The confidence-gated opener mechanism is implemented and reduced `P-005` from 9/9 failures to 0/9, but the strict challenge benchmark work and several production-hardening gaps remain.
+This file tracks what remained after the Act IV deterministic probe ablation and what has now been closed. The original confidence-gated opener mechanism is still in the repo, but the current benchmark-facing Act IV submission is the `dual_control_v2` coordination prompt for tau2 retail. The strict benchmark artifact gaps are now addressed. Production-hardening work still remains.
 
 ## Act IV Completion Gaps
 
 | Gap | Status | Remediation |
 |---|---|---|
-| Sealed held-out tau2-Bench run is missing | Missing | Run the sealed held-out evaluation only when final-ready, then generate real `held_out_traces.jsonl` from the sealed split. |
-| Automated optimization baseline is missing | Missing | Run or document a GEPA/AutoAgent-equivalent baseline on the same compute budget for Delta B. |
-| True held-out Delta A is missing | Missing | Compare Day-1 baseline vs Act IV method on sealed held-out with 95% CI separation and p < 0.05. |
-| Delta B and Delta C are missing | Missing | Report method vs automated baseline and method vs the published tau2-Bench reference. |
-| p95 latency from real tasks is missing | Missing | Aggregate p95 latency from real held-out traces rather than deterministic probes. |
+| Sealed held-out tau2-Bench run is missing | Addressed | Sealed held-out traces now exist and are exported at the repo root. |
+| Automated optimization baseline is missing | Addressed | Auto-opt dev-search + sealed evaluation artifacts now exist under `eval/runs/auto_opt/`. |
+| True held-out Delta A is missing | Addressed | Delta A is now computed from sealed held-out artifacts and recorded explicitly, including the current positive-but-not-significant result. |
+| Delta B and Delta C are missing | Addressed | Delta B and Delta C are now reported in `method.md` and `ablation_results.json`. |
+| p95 latency from real tasks is missing | Addressed | p95 latency is now aggregated from the sealed held-out trace exports. |
 | Confidence mechanism is wired end-to-end for inbound email | Addressed | `LeadOrchestrator.handle_email()` now runs `agent.enrichment.pipeline.run()`, writes the resulting ICP/confidence fields to HubSpot, and passes `brief.icp_segment`, `brief.segment_confidence`, `brief.signals.ai_maturity.score`, and `brief.signals.bench.data.bench_to_brief_gate_passed` into the confidence-aware email reply path when outbound routing is configured. |
 
 ## Known System Gaps From Act III
@@ -29,14 +29,14 @@ This file tracks what remains after the Act IV deterministic probe ablation. The
 
 | Gap | Status | Remediation |
 |---|---|---|
-| `held_out_traces.jsonl` is a probe-ablation trace summary, not sealed held-out traces | Present and caveated | Keep the caveat until final evaluation, or rename to `probe_ablation_traces.jsonl` and reserve `held_out_traces.jsonl` for the sealed run. |
-| `method.md` needs final benchmark results later | Pending | After sealed evaluation, add real held-out results, confidence intervals, p-value, cost, and latency. |
-| README needs final status update after sealed evaluation | Pending | Change status from deterministic probe ablation complete to Act IV benchmark evaluation complete after final evaluation. |
+| `held_out_traces.jsonl` is a probe-ablation trace summary, not sealed held-out traces | Addressed | The root export is now the merged sealed held-out trace file for all three conditions. |
+| `method.md` needs final benchmark results later | Addressed | `method.md` now includes sealed held-out results, confidence intervals, p-value, cost, and latency. |
+| README needs final status update after sealed evaluation | Addressed | README now reflects the sealed artifact package. |
 
 ## Recommended Order
 
 1. Wire confidence end-to-end into production outreach.
 2. Fix ICP priority/order and Segment 1 open-role gating.
 3. Add real bench capacity enforcement.
-4. Update Act IV docs after those fixes.
-5. Run sealed held-out evaluation only when the system is stable.
+4. Tighten the memo around the positive-but-not-significant Delta A result.
+5. Iterate on the coordination method if we want a cleaner significance margin.
