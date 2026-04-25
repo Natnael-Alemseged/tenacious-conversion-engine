@@ -374,3 +374,25 @@ def test_layoff_percentage_preserved_when_present(tmp_path) -> None:
     results = layoffs_check("TestCo", path=str(csv_file), employee_count_enum="c_00251_00500")
     assert results[0]["percentage"] == "22"
     assert results[0].get("percentage_source") == "reported"
+
+
+def test_github_fork_only_does_not_inflate_score_p028() -> None:
+    """github_activity=True with github_fork_only=True must not raise score above baseline."""
+    score_forks, _, _ = score({"github_activity": True, "github_fork_only": True})
+    score_none, _, _ = score({})
+    assert score_forks == score_none, (
+        f"Fork-only activity should not inflate score: {score_none} → {score_forks}"
+    )
+
+
+def test_github_original_commits_inflate_score_p028() -> None:
+    """github_activity=True without github_fork_only raises score."""
+    score_original, _, _ = score({"github_activity": True})
+    score_none, _, _ = score({})
+    assert score_original > score_none
+
+
+def test_github_fork_only_does_not_count_toward_confidence() -> None:
+    _, _, conf_forks = score({"github_activity": True, "github_fork_only": True})
+    _, _, conf_none = score({})
+    assert conf_forks == conf_none

@@ -475,20 +475,17 @@ def probe_P027() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P028() -> tuple[int, list[str], list[str]]:
-    """github_activity signal has no fork-vs-commit distinction in ai_maturity.score()."""
+    """Fork-only github activity must not inflate AI maturity score."""
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        # If caller passes github_activity=True based on forks-only, scorer accepts it
-        score_forks, _, conf_forks = ai_maturity.score({"github_activity": True})
-        score_none, _, conf_none = ai_maturity.score({})
-        # The scorer cannot distinguish forks from original commits — it's a bool input
-        # Triggered if score improves from a potentially-fork-inflated signal
+        score_forks, _, _ = ai_maturity.score({"github_activity": True, "github_fork_only": True})
+        score_none, _, _ = ai_maturity.score({})
         if score_forks > score_none:
             triggered += 1
             details.append(
-                f"github_activity=True (possibly forks) raises score {score_none}→{score_forks}; "
-                "scorer has no fork/commit distinction"
+                f"Fork-only activity raised score {score_none}→{score_forks}; "
+                "github_fork_only=True must suppress the weight"
             )
         trace_ids.append(tid)
     return triggered, trace_ids, details
