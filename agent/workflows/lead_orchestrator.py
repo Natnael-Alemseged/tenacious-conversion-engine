@@ -839,7 +839,7 @@ class LeadOrchestrator:
                         icp_segment=brief.icp_segment,
                         ai_maturity_score=brief.signals.ai_maturity.score,
                         confidence=brief.segment_confidence,
-                        bench_to_brief_gate_passed=True,
+                        bench_to_brief_gate_passed=bench_gate_passed or exploratory_reply_ok,
                         subject_override=grounded_reply.subject,
                         html_override=grounded_reply.html,
                         text_override=grounded_reply.text,
