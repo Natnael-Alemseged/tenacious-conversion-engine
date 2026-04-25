@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     crunchbase_odm_path: str = "./data/crunchbase_odm_sample.json"
     layoffs_fyi_path: str = "./data/layoffs_fyi.csv"
     sms_suppression_path: str = "./data/sms_suppression.json"
+    email_suppression_path: str = "./data/email_suppression.json"
     bench_summary_path: str = "./tenacious_sales_data/seed/bench_summary.json"
 
     # Conversation DB (Postgres conversation memory)
