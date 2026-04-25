@@ -18,7 +18,10 @@ from agent.integrations.hubspot import HubSpotClient
 from agent.integrations.langfuse import LangfuseClient
 from agent.integrations.resend_email import ResendClient, ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
+from agent.storage.conversations import ConversationStore
 from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
+from agent.workflows.thread_context import load_thread_context
+from agent.workflows.thread_state import recompute_state
 
 DownstreamEventHandler = (
     Callable[[str, dict[str, Any], InboundEmailEvent | InboundSmsEvent], None] | None
@@ -435,6 +438,7 @@ class LeadOrchestrator:
         self._autoresponder_heuristics = load_heuristics()
         self.resend = resend or ResendClient()
         self.sms = sms or AfricasTalkingSmsClient()
+        self.conversations = ConversationStore()
         self.reply_handler = reply_handler
         self.bounce_handler = bounce_handler
         self.enrichment_runner = enrichment_runner or run_enrichment_pipeline
@@ -491,6 +495,31 @@ class LeadOrchestrator:
 
     def handle_email(self, event: InboundEmailEvent) -> dict[str, Any]:
         company_name = _company_name_from_email(str(event.from_email))
+        resolved = self.conversations.resolve_thread_for_email(
+            from_email=str(event.from_email),
+            subject=str(event.subject),
+            provider="resend",
+            provider_message_id=str(event.message_id or ""),
+            in_reply_to=str(event.in_reply_to or ""),
+            provider_thread_key=str(event.in_reply_to or event.message_id or ""),
+        )
+        thread_id = resolved.thread_id if resolved else ""
+        if thread_id:
+            self.conversations.insert_message(
+                thread_id=thread_id,
+                channel="email",
+                direction="inbound",
+                provider="resend",
+                provider_message_id=str(event.message_id or ""),
+                provider_thread_key=str(event.in_reply_to or event.message_id or ""),
+                in_reply_to=str(event.in_reply_to or ""),
+                subject=str(event.subject or ""),
+                body_text=str(event.body or ""),
+                from_address=str(event.from_email or ""),
+                to_address=str(event.to or ""),
+                sent_at=event.received_at,
+                metadata={"event_type": str(event.event_type or "email.replied")},
+            )
         _log.info(
             "handle_email",
             extra=_handle_email_log_extra(
@@ -505,6 +534,13 @@ class LeadOrchestrator:
         inbound_text = f"{event.subject}\n{event.body}"
         booking_requested = _booking_intent(inbound_text)
         requested_booking_start = _booking_start_from_text(inbound_text)
+        if thread_id and booking_requested:
+            self.conversations.insert_event(
+                thread_id=thread_id,
+                event_type="booking_requested",
+                event_at=event.received_at,
+                payload={"requested_start": requested_booking_start or "", "channel": "email"},
+            )
         _log.info(
             "handle_email",
             extra=_handle_email_log_extra(
@@ -572,6 +608,14 @@ class LeadOrchestrator:
                 if span:
                     span.update(output=result)
                 hubspot_contact_id = str(result.get("id") or "")
+                if thread_id and hubspot_contact_id:
+                    self.conversations.attach_hubspot_contact(
+                        thread_id=thread_id,
+                        hubspot_contact_id=hubspot_contact_id,
+                        lead_email=str(event.from_email or ""),
+                        company_name=str(brief.company_name or ""),
+                        company_domain=_email_domain(str(event.from_email or "")),
+                    )
                 bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
                 can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
                 exploratory_reply_ok = brief.icp_segment == 0 or brief.segment_confidence < 0.6
@@ -591,6 +635,7 @@ class LeadOrchestrator:
                             "icp_segment": str(brief.icp_segment),
                         },
                         bench_to_brief_gate_passed=bench_gate_passed,
+                        thread_id=thread_id or None,
                     )
                     result["booking"] = booking_result
                     _log.info(
@@ -629,6 +674,11 @@ class LeadOrchestrator:
                         ),
                     )
                 if can_route_reply and reply_gate_passed:
+                    if thread_id:
+                        # Load thread context for future prompt-based reply generation.
+                        result["thread_context"] = load_thread_context(
+                            store=self.conversations, thread_id=thread_id, limit=10
+                        ).__dict__
                     reply_subject, reply_html, reply_text = _build_inbound_email_reply(
                         event=event,
                         company_name=brief.company_name,
@@ -655,6 +705,7 @@ class LeadOrchestrator:
                         idempotency_key=(
                             f"inbound-reply:{event.message_id}" if event.message_id else None
                         ),
+                        thread_id=thread_id or None,
                     )
                     result["reply"] = reply_result
                     _log.info(
@@ -743,6 +794,24 @@ class LeadOrchestrator:
                         "matched_pattern": inbound_class.matched_pattern,
                     }
                 )
+                if thread_id:
+                    prior = self.conversations.fetch_state(thread_id=thread_id)
+                    messages = self.conversations.fetch_recent_messages(
+                        thread_id=thread_id, limit=200
+                    )
+                    events = self.conversations.fetch_events(thread_id=thread_id, limit=200)
+                    derived = recompute_state(
+                        messages=messages,
+                        events=events,
+                        prior_state=prior,
+                        enrichment={
+                            "bench_gate_passed": bench_gate_passed,
+                            "icp_segment": brief.icp_segment,
+                            "segment_confidence": brief.segment_confidence,
+                            "ai_maturity_score": brief.signals.ai_maturity.score,
+                        },
+                    )
+                    self.conversations.upsert_state(thread_id=thread_id, state=derived)
                 self._emit_reply_handler(channel="email", result=result, event=event)
                 _log.info(
                     "handle_email",
@@ -763,6 +832,21 @@ class LeadOrchestrator:
                 return result
 
     def handle_email_bounce(self, event: InboundEmailEvent) -> dict[str, Any]:
+        resolved = self.conversations.resolve_thread_for_email(
+            from_email=str(event.from_email),
+            subject=str(event.subject),
+            provider="resend",
+            provider_message_id=str(event.message_id or ""),
+            in_reply_to=str(event.in_reply_to or ""),
+            provider_thread_key=str(event.in_reply_to or event.message_id or ""),
+        )
+        if resolved:
+            self.conversations.insert_event(
+                thread_id=resolved.thread_id,
+                event_type="bounce",
+                event_at=event.received_at,
+                payload={"bounce_type": event.bounce_type or event.event_type},
+            )
         props = {
             "email_bounce_type": event.bounce_type or event.event_type,
             "email_bounced_at": event.received_at.isoformat(),
@@ -798,6 +882,22 @@ class LeadOrchestrator:
             return result
 
     def handle_sms(self, event: InboundSmsEvent) -> dict[str, Any]:
+        resolved = self.conversations.resolve_thread_for_sms(from_phone=event.from_number)
+        thread_id = resolved.thread_id if resolved else ""
+        if thread_id:
+            self.conversations.insert_message(
+                thread_id=thread_id,
+                channel="sms",
+                direction="inbound",
+                provider="africastalking",
+                provider_message_id=str(event.message_id or ""),
+                provider_thread_key=str(event.from_number or ""),
+                body_text=str(event.text or ""),
+                from_address=str(event.from_number or ""),
+                to_address=str(event.to or ""),
+                sent_at=datetime.now(UTC),
+                metadata={"date": str(event.date or "")},
+            )
         enrichment_props = {
             "lead_source": "inbound_sms_reply",
             "last_sms_reply_text": event.text[:255],
@@ -834,24 +934,48 @@ class LeadOrchestrator:
                     raise
                 if span:
                     span.update(output=result)
+                hubspot_contact_id = str(result.get("id") or "")
+                if thread_id and hubspot_contact_id:
+                    self.conversations.attach_hubspot_contact(
+                        thread_id=thread_id,
+                        hubspot_contact_id=hubspot_contact_id,
+                        lead_phone=event.from_number,
+                    )
+                state = self.conversations.fetch_state(thread_id=thread_id) if thread_id else None
+                if state and bool(state.get("sms_opted_out")):
+                    result["reply"] = {"status": "skipped", "reason": "sms_opted_out"}
+                    self._emit_reply_handler(channel="sms", result=result, event=event)
+                    return result
                 can_route_reply = settings.outbound_enabled or settings.outbound_sink_phone
                 if can_route_reply:
                     reply_text = _build_inbound_sms_reply(event=event)
-                    reply_result = self.send_warm_lead_sms(
-                        to_phone=event.from_number,
-                        company_name=_company_name_from_email(f"team@{event.to}.example")
-                        if event.to
-                        else "your team",
-                        scheduling_hint=reply_text,
-                        prior_email_replied=True,
-                        message_override=reply_text,
-                    )
-                    result["reply"] = reply_result
+                    if bool((state or {}).get("email_replied")):
+                        reply_result = self.send_warm_lead_sms(
+                            to_phone=event.from_number,
+                            company_name=_company_name_from_email(f"team@{event.to}.example")
+                            if event.to
+                            else "your team",
+                            scheduling_hint=reply_text,
+                            prior_email_replied=True,
+                            message_override=reply_text,
+                            thread_id=thread_id or None,
+                        )
+                        result["reply"] = reply_result
+                    else:
+                        result["reply"] = {"status": "skipped", "reason": "not_warm_lead"}
                 else:
                     result["reply"] = {
                         "status": "skipped",
                         "reason": "outbound_disabled_without_sink",
                     }
+                if thread_id:
+                    prior = self.conversations.fetch_state(thread_id=thread_id)
+                    messages = self.conversations.fetch_recent_messages(
+                        thread_id=thread_id, limit=200
+                    )
+                    events = self.conversations.fetch_events(thread_id=thread_id, limit=200)
+                    derived = recompute_state(messages=messages, events=events, prior_state=prior)
+                    self.conversations.upsert_state(thread_id=thread_id, state=derived)
                 self._emit_reply_handler(channel="sms", result=result, event=event)
                 _log.info(
                     "handle_sms",
@@ -884,6 +1008,7 @@ class LeadOrchestrator:
         reference_message_ids: list[str] | None = None,
         idempotency_key: str | None = None,
         outbound_variant: str = "generic",
+        thread_id: str | None = None,
     ) -> dict[str, Any]:
         seg = icp_segment if icp_segment in _SUBJECT_SUFFIXES else 0
         subject = _build_subject(company_name, seg)
@@ -1090,6 +1215,24 @@ class LeadOrchestrator:
                     "routed_to": routed_to,
                 }
             )
+            if thread_id:
+                self.conversations.insert_message(
+                    thread_id=thread_id,
+                    channel="email",
+                    direction="outbound",
+                    provider="resend",
+                    provider_message_id=str(result.get("id") or ""),
+                    provider_thread_key=str(resend_thread_key or ""),
+                    in_reply_to=str(reply_to_message_id or ""),
+                    subject=subject,
+                    body_text=text or "",
+                    from_address=str(settings.resend_from_email or ""),
+                    to_address=str(to_email or ""),
+                    sent_at=datetime.now(UTC),
+                    outbound_variant=outbound_variant,
+                    draft=bool(outbound_audit.get("draft", True)),
+                    metadata=outbound_audit,
+                )
 
             _log.info(
                 "outbound_email_send",
@@ -1117,6 +1260,7 @@ class LeadOrchestrator:
         prior_email_replied: bool,
         crunchbase_id: str | None = None,
         message_override: str | None = None,
+        thread_id: str | None = None,
     ) -> dict[str, Any]:
         """Send an SMS scheduling nudge. Only valid for warm leads who replied by email."""
         if not prior_email_replied:
@@ -1174,6 +1318,25 @@ class LeadOrchestrator:
                     raise
                 if span:
                     span.update(output=result)
+            if thread_id:
+                self.conversations.insert_message(
+                    thread_id=thread_id,
+                    channel="sms",
+                    direction="outbound",
+                    provider="africastalking",
+                    provider_message_id=str(
+                        result.get("SMSMessageData", {}).get("Message", "")
+                        if isinstance(result, dict)
+                        else ""
+                    ),
+                    provider_thread_key=str(to_phone or ""),
+                    body_text=message,
+                    from_address=str(settings.africastalking_short_code or ""),
+                    to_address=str(to_phone or ""),
+                    sent_at=datetime.now(UTC),
+                    draft=bool(outbound_audit.get("draft", True)),
+                    metadata=outbound_audit,
+                )
             try:
                 self.hubspot.upsert_contact(
                     identifier=to_phone,
@@ -1223,6 +1386,7 @@ class LeadOrchestrator:
         enrichment_summary: str | None = None,
         metadata: dict[str, Any] | None = None,
         bench_to_brief_gate_passed: bool = True,
+        thread_id: str | None = None,
     ) -> dict[str, Any]:
         _require_bench_gate(
             bench_to_brief_gate_passed=bench_to_brief_gate_passed,
@@ -1260,6 +1424,12 @@ class LeadOrchestrator:
                     exc=exc,
                 )
                 raise exc
+            if thread_id:
+                self.conversations.insert_event(
+                    thread_id=thread_id,
+                    event_type="booking_created",
+                    payload={"booking_uid": booking_uid, "start": start, "timezone": timezone},
+                )
 
             hs_props: dict[str, Any] = {
                 "discovery_call_booked": "true",
