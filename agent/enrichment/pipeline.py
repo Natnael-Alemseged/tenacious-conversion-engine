@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from agent.core.config import settings
 from agent.enrichment import ai_maturity, crunchbase, job_posts, layoffs
+from agent.enrichment.ai_maturity_collectors.collectors import collect_all_ai_maturity_signals
 from agent.enrichment.bench_summary import bench_match, infer_required_stacks, load
 from agent.enrichment.schemas import (
     AiMaturitySignal,
@@ -229,8 +230,12 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     if leader_changes:
         ai_signals["named_ai_leadership"] = named_ai_leadership
 
-    ai_evidence: list[dict[str, str]] = []
-    ai_evidence_strength = 0.0
+    extra_signals, ai_evidence, ai_evidence_strength = collect_all_ai_maturity_signals(
+        company_domain=company_domain,
+        tech_stack=tech_stack,
+        job_role_titles=role_titles,
+    )
+    ai_signals.update(extra_signals)
     ai_score, ai_justification, ai_confidence = ai_maturity.score(ai_signals)
     ai_meta = ai_maturity_confidence_meta(ai_confidence)
 
