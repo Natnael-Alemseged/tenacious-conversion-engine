@@ -319,6 +319,102 @@ def _signal_summary_from_brief(brief: HiringSignalBrief) -> str:
     return "We found limited public signal, so this is best treated as an exploratory fit check."
 
 
+def _reply_subject(subject: str) -> str:
+    cleaned = subject.strip()
+    if not cleaned:
+        return "Re: your note"
+    if cleaned.lower().startswith("re:"):
+        return cleaned
+    return f"Re: {cleaned}"
+
+
+def _extract_hiring_focus(text: str) -> str:
+    lowered = text.lower()
+    matches: list[str] = []
+    for token, label in (
+        ("fastapi", "FastAPI"),
+        ("python", "Python"),
+        ("backend", "backend"),
+        ("data engineer", "data engineering"),
+        ("data engineers", "data engineering"),
+        ("frontend", "frontend"),
+        ("react", "React"),
+        ("node", "Node.js"),
+        ("devops", "DevOps"),
+    ):
+        if token in lowered and label not in matches:
+            matches.append(label)
+    if not matches:
+        return "engineering hiring"
+    if len(matches) == 1:
+        return f"{matches[0]} hiring"
+    if len(matches) == 2:
+        return f"{matches[0]} and {matches[1]} hiring"
+    return f"{', '.join(matches[:-1])}, and {matches[-1]} hiring"
+
+
+def _build_inbound_sms_reply(*, event: InboundSmsEvent) -> str:
+    focus = _extract_hiring_focus(event.text)
+    lowered = event.text.lower()
+    if _booking_intent(event.text):
+        return (
+            "Happy to help. Share a preferred time, timezone overlap, and rough role count, "
+            "or say 'schedule' and I can send next-step options."
+        )
+    if any(token in lowered for token in ("price", "pricing", "rate", "cost", "budget")):
+        return (
+            "I can help with that. Send the role count, seniority level, timezone overlap, "
+            "and target start date and I'll narrow the recommendation."
+        )
+    return (
+        f"Thanks for reaching out about {focus}. "
+        "If helpful, text the role count, seniority level, timezone overlap, "
+        "and target start date and I can tighten the recommendation."
+    )
+
+
+def _build_inbound_email_reply(
+    *,
+    event: InboundEmailEvent,
+    company_name: str,
+    booking_requested: bool,
+    booking_result: dict[str, Any] | None,
+    requested_booking_start: str | None,
+) -> tuple[str, str, str]:
+    name = _attendee_name_from_email(str(event.from_email)).split(" ", 1)[0]
+    focus = _extract_hiring_focus(f"{event.subject}\n{event.body}")
+    greeting = f"Hi {name},"
+    opener = f"Thanks for reaching out about {focus} at {company_name}."
+    if booking_result is not None and requested_booking_start:
+        middle = f"I've booked the call for {requested_booking_start} UTC."
+        closing = (
+            "If you want to make the conversation more concrete, send the role count, "
+            "seniority, timezone overlap, and target start date and I'll tailor the prep."
+        )
+    elif booking_requested:
+        if settings.calcom_username:
+            middle = (
+                f"Happy to set up time. You can pick a slot here: "
+                f"https://cal.com/{settings.calcom_username}."
+            )
+        else:
+            middle = "Happy to set up time. I can send over a few scheduling options."
+        closing = (
+            "If you already know the role count, seniority mix, timezone overlap, "
+            "or target start date, send that over and I can make the next step "
+            "more specific."
+        )
+    else:
+        middle = (
+            "If helpful, send the role count, seniority level, timezone overlap, and target "
+            "start date and I can reply with a tighter recommendation."
+        )
+        closing = "I can also send a few scheduling options if you'd rather talk it through live."
+    html = f"<p>{greeting}</p><p>{opener}</p><p>{middle}</p><p>{closing}</p>"
+    text = f"{greeting}\n\n{opener}\n\n{middle}\n\n{closing}"
+    return _reply_subject(event.subject), html, text
+
+
 class LeadOrchestrator:
     def __init__(
         self,
@@ -474,6 +570,8 @@ class LeadOrchestrator:
                     span.update(output=result)
                 bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
                 can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
+                exploratory_reply_ok = brief.icp_segment == 0 or brief.segment_confidence < 0.6
+                reply_gate_passed = bench_gate_passed or exploratory_reply_ok
                 booking_result: dict[str, Any] | None = None
                 if booking_requested and requested_booking_start and bench_gate_passed:
                     booking_result = self.book_discovery_call(
@@ -526,32 +624,33 @@ class LeadOrchestrator:
                             reply_reason=booking_reason,
                         ),
                     )
-                if can_route_reply and bench_gate_passed:
-                    reply_signal_summary = signal_summary
-                    if booking_result is not None:
-                        reply_signal_summary = (
-                            f"{signal_summary} I booked the discovery call for "
-                            f"{requested_booking_start}."
-                        )
-                    elif booking_requested:
-                        if settings.calcom_username:
-                            reply_signal_summary = (
-                                f"{signal_summary} If useful, you can pick a time here: "
-                                f"https://cal.com/{settings.calcom_username}."
-                            )
-                        else:
-                            reply_signal_summary = (
-                                f"{signal_summary} I can send a few scheduling options if "
-                                "you want to compare calendars."
-                            )
+                if can_route_reply and reply_gate_passed:
+                    reply_subject, reply_html, reply_text = _build_inbound_email_reply(
+                        event=event,
+                        company_name=brief.company_name,
+                        booking_requested=booking_requested,
+                        booking_result=booking_result,
+                        requested_booking_start=requested_booking_start,
+                    )
+                    reference_message_ids = [
+                        ref for ref in (event.in_reply_to, event.message_id) if ref
+                    ]
                     reply_result = self.send_outbound_email(
                         to_email=str(event.from_email),
                         company_name=brief.company_name,
-                        signal_summary=reply_signal_summary,
+                        signal_summary=signal_summary,
                         icp_segment=brief.icp_segment,
                         ai_maturity_score=brief.signals.ai_maturity.score,
                         confidence=brief.segment_confidence,
-                        bench_to_brief_gate_passed=bench_gate_passed,
+                        bench_to_brief_gate_passed=True,
+                        subject_override=reply_subject,
+                        html_override=reply_html,
+                        text_override=reply_text,
+                        reply_to_message_id=event.message_id or None,
+                        reference_message_ids=reference_message_ids or None,
+                        idempotency_key=(
+                            f"inbound-reply:{event.message_id}" if event.message_id else None
+                        ),
                     )
                     result["reply"] = reply_result
                     _log.info(
@@ -572,7 +671,7 @@ class LeadOrchestrator:
                 else:
                     reason = (
                         "bench_to_brief_gate_failed"
-                        if not bench_gate_passed
+                        if not reply_gate_passed
                         else "outbound_disabled_without_sink"
                     )
                     result["reply"] = {
@@ -698,6 +797,24 @@ class LeadOrchestrator:
                     raise
                 if span:
                     span.update(output=result)
+                can_route_reply = settings.outbound_enabled or settings.outbound_sink_phone
+                if can_route_reply:
+                    reply_text = _build_inbound_sms_reply(event=event)
+                    reply_result = self.send_warm_lead_sms(
+                        to_phone=event.from_number,
+                        company_name=_company_name_from_email(f"team@{event.to}.example")
+                        if event.to
+                        else "your team",
+                        scheduling_hint=reply_text,
+                        prior_email_replied=True,
+                        message_override=reply_text,
+                    )
+                    result["reply"] = reply_result
+                else:
+                    result["reply"] = {
+                        "status": "skipped",
+                        "reason": "outbound_disabled_without_sink",
+                    }
                 self._emit_reply_handler(channel="sms", result=result, event=event)
                 _log.info(
                     "handle_sms",
@@ -723,9 +840,17 @@ class LeadOrchestrator:
         segment_confidence: float | None = None,
         crunchbase_id: str | None = None,
         bench_to_brief_gate_passed: bool = True,
+        subject_override: str | None = None,
+        html_override: str | None = None,
+        text_override: str | None = None,
+        reply_to_message_id: str | None = None,
+        reference_message_ids: list[str] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         seg = icp_segment if icp_segment in _SUBJECT_SUFFIXES else 0
         subject = _build_subject(company_name, seg)
+        if subject_override is not None:
+            subject = subject_override
         phrasing_score = segment_confidence if segment_confidence is not None else confidence
         phrasing = confidence_phrasing(phrasing_score) if phrasing_score is not None else "hedged"
         opener = _segment_opener(company_name, seg, phrasing)
@@ -773,13 +898,21 @@ class LeadOrchestrator:
                 "Is this on your radar?"
             )
 
-        html = (
+        html = html_override or (
             f"<p>Hi there,</p>"
             f"<p>{opener}</p>"
             f"<p>{signal_line}</p>"
             "<p>If helpful, I can send over a short qualification brief "
             "and a few scheduling options.</p>"
         )
+        text = text_override
+        headers: dict[str, str] = {}
+        if reply_to_message_id:
+            headers["In-Reply-To"] = reply_to_message_id
+        if reference_message_ids:
+            refs = [ref for ref in reference_message_ids if ref]
+            if refs:
+                headers["References"] = " ".join(refs)
         enrichment_props: dict[str, Any] = {
             "lead_source": "outbound_email",
             "last_outbound_email_at": _now_iso(),
@@ -818,10 +951,13 @@ class LeadOrchestrator:
                         to_email=routed_to,
                         subject=subject,
                         html=html,
+                        text=text,
                         tags={
                             "tenacious_draft": "true",
                             "outbound_mode": str(outbound_audit["outbound_mode"]),
                         },
+                        headers=headers or None,
+                        idempotency_key=idempotency_key,
                     )
                 except ResendSendError as exc:
                     if span:
@@ -924,6 +1060,7 @@ class LeadOrchestrator:
         scheduling_hint: str,
         prior_email_replied: bool,
         crunchbase_id: str | None = None,
+        message_override: str | None = None,
     ) -> dict[str, Any]:
         """Send an SMS scheduling nudge. Only valid for warm leads who replied by email."""
         if not prior_email_replied:
@@ -942,7 +1079,7 @@ class LeadOrchestrator:
                 exc=exc,
             )
             raise
-        message = (
+        message = message_override or (
             f"{company_name}: following up on your email reply. "
             f"{scheduling_hint} Reply to confirm a time."
         )

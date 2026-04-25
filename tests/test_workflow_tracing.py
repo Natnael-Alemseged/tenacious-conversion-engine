@@ -358,6 +358,31 @@ def test_inbound_reply_handlers_can_be_registered() -> None:
     ]
 
 
+def test_handle_sms_sends_human_reply_for_hiring_request(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+    )
+
+    result = orchestrator.handle_sms(
+        InboundSmsEvent(
+            from_number="+251911000000",
+            text="hello can i get python developers from you guys",
+            message_id="sms-1",
+        )
+    )
+
+    assert result["reply"]["to_phone"] == "+251911000000"
+    assert "Thanks for reaching out about Python hiring." in result["reply"]["message"]
+
+
 def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypatch) -> None:
     monkeypatch.setattr(
         "agent.workflows.lead_orchestrator.settings.outbound_enabled",
@@ -383,6 +408,7 @@ def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypat
             from_email="lead@acme.com",
             subject="Can we schedule a call?",
             body="I'd like to book a demo next week.",
+            message_id="<msg-456>",
         )
     )
 
@@ -390,9 +416,10 @@ def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypat
     assert result["properties"]["segment_confidence"] == "0.200"
     assert result["enrichment"]["booking_requested"] is True
     assert result["reply"]["to_email"] == "lead@acme.com"
-    assert "clearly in growth mode" not in result["reply"]["html"]
-    assert "I do not want to over-read it" in result["reply"]["html"]
+    assert result["reply"]["subject"] == "Re: Can we schedule a call?"
+    assert "Thanks for reaching out about engineering hiring at Acme." in result["reply"]["html"]
     assert "https://cal.com/tenacious-demo" in result["reply"]["html"]
+    assert result["reply"]["headers"]["In-Reply-To"] == "<msg-456>"
     assert "booking" not in result
     assert result["enrichment"]["booking_created"] is False
 
@@ -471,7 +498,7 @@ def test_handle_email_auto_books_when_explicit_iso_time_present(monkeypatch) -> 
     assert result["booking"]["metadata"]["source"] == "inbound_email"
     assert result["enrichment"]["booking_created"] is True
     assert result["enrichment"]["requested_booking_start"] == "2026-05-01T10:00:00Z"
-    assert "I booked the discovery call for 2026-05-01T10:00:00Z" in result["reply"]["html"]
+    assert "I've booked the call for 2026-05-01T10:00:00Z UTC." in result["reply"]["html"]
 
 
 def test_handle_email_logs_booking_created_phase(caplog, monkeypatch) -> None:
@@ -501,6 +528,42 @@ def test_handle_email_logs_booking_created_phase(caplog, monkeypatch) -> None:
 
     records = [r for r in caplog.records if r.getMessage() == "handle_email"]
     assert any(r.wf_phase == "booking_created" and r.he_booking_created == "true" for r in records)
+
+
+def test_handle_email_replies_for_exploratory_lead_even_without_bench_match(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    brief = _fake_brief(
+        company_name="10Academy",
+        icp_segment=0,
+        segment_confidence=0.0,
+        bench_gate=False,
+    )
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    result = orchestrator.handle_email(
+        InboundEmailEvent(
+            from_email="natnaela@10academy.org",
+            subject="hire engineers",
+            body="I'm interested in hiring fastapi (python) developers.",
+            message_id="<msg-789>",
+        )
+    )
+
+    assert result["reply"]["to_email"] == "natnaela@10academy.org"
+    assert result["reply"]["tags"]["outbound_mode"] == "live"
+    assert result["reply"]["subject"] == "Re: hire engineers"
+    assert "FastAPI and Python hiring" in result["reply"]["html"]
+    assert result["enrichment"]["bench_to_brief_gate_passed"] is False
 
 
 def _make_orchestrator(
