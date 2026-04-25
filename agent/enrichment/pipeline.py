@@ -92,9 +92,9 @@ SEGMENT_1_MIN_OPEN_ROLES: int = 5
 
 def _classify_segment(
     *,
-    funding: list | None,
-    layoff_events: list | None,
-    leader_changes: list | None,
+    funding: list[dict[str, Any]] | None,
+    layoff_events: list[dict[str, Any]] | None,
+    leader_changes: list[dict[str, Any]] | None,
     ai_score: int,
     open_roles: int,
 ) -> int:

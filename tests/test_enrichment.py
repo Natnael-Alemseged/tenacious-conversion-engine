@@ -8,7 +8,7 @@ from agent.enrichment.artifacts import (
     write_discovery_call_context_brief,
     write_hiring_signal_brief,
 )
-from agent.enrichment.pipeline import run
+from agent.enrichment.pipeline import _classify_segment, run
 from agent.enrichment.schemas import HiringSignalBrief
 
 # ---------------------------------------------------------------------------
@@ -316,9 +316,9 @@ def test_write_discovery_call_context_brief_emits_required_sections(tmp_path, mo
 # ---------------------------------------------------------------------------
 
 
-def _classify(*, funding=None, layoff_events=None, leader_changes=None, ai_score=0, open_roles=0):
-    from agent.enrichment.pipeline import _classify_segment
-
+def _classify(
+    *, funding=None, layoff_events=None, leader_changes=None, ai_score=0, open_roles=0
+) -> int:
     return _classify_segment(
         funding=funding,
         layoff_events=layoff_events,
@@ -328,20 +328,20 @@ def _classify(*, funding=None, layoff_events=None, leader_changes=None, ai_score
     )
 
 
-def test_layoff_overrides_funding_p001():
+def test_layoff_overrides_funding_p001() -> None:
     funding = [{"investment_type": "series_b", "money_raised_usd": 18_000_000}]
     layoffs = [{"company": "TestCo", "laid_off_count": "35", "percentage": "22"}]
     seg = _classify(funding=funding, layoff_events=layoffs, open_roles=10)
     assert seg == 2, f"Expected Segment 2 (layoff > funding), got {seg}"
 
 
-def test_funding_with_enough_open_roles_is_segment_1_p004():
+def test_funding_with_enough_open_roles_is_segment_1_p004() -> None:
     funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
     seg = _classify(funding=funding, open_roles=5)
     assert seg == 1
 
 
-def test_funding_with_zero_open_roles_abstains_p004():
+def test_funding_with_zero_open_roles_abstains_p004() -> None:
     funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
     seg = _classify(funding=funding, open_roles=0)
     assert seg == 0, f"Segment 1 must not fire with 0 open roles, got {seg}"

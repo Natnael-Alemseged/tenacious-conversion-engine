@@ -59,16 +59,8 @@ def probe_P001() -> tuple[int, list[str], list[str]]:
     """Layoff+funding → must be Segment 2, not Segment 1."""
     from agent.enrichment.pipeline import _classify_segment
 
-    now = datetime.now(UTC)
     mock_funding = [{"investment_type": "series_b", "money_raised_usd": 18_000_000}]
-    mock_layoffs = [
-        {
-            "company": "NovaCure Analytics",
-            "date": now.isoformat(),
-            "laid_off_count": "35",
-            "percentage": "22",
-        }
-    ]
+    mock_layoffs = [{"company": "NovaCure Analytics", "laid_off_count": "35", "percentage": "22"}]
 
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
@@ -140,16 +132,20 @@ def probe_P004() -> tuple[int, list[str], list[str]]:
     mock_funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
+        # Check 1: zero open roles must not get segment 1
         tid = _trace_id()
         seg_zero = _classify_segment(
             funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=0
         )
-        seg_five = _classify_segment(
-            funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=5
-        )
         if seg_zero == 1:
             triggered += 1
             details.append("Segment 1 assigned with 0 open roles (expected 0)")
+        trace_ids.append(tid)
+        # Check 2: five open roles must get segment 1
+        tid = _trace_id()
+        seg_five = _classify_segment(
+            funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=5
+        )
         if seg_five != 1:
             triggered += 1
             details.append(f"Segment 1 not assigned with 5 open roles (got {seg_five})")
