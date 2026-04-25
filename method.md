@@ -194,7 +194,34 @@ Delta A is directionally positive. At n=20 with a 5-percentage-point difference,
 
 The earlier Act IV mechanism targeted a different failure class: `signal_overclaiming` (Probe P-005 — Segment 1 opener sent assertively when ICP confidence was exploratory). That mechanism is a **production workflow feature**, not a benchmark submission:
 
-- **What it does.** The enrichment pipeline (`agent/enrichment/pipeline.py`) computes a `segment_confidence` score and a `bench_to_brief_gate_passed` flag. When the gate fails, `LeadOrchestrator.handle_email()` routes outbound email to an exploratory template rather than an assertive pitch. P-005 went from 9/9 failures to 0/9 after this change.
+- **What it does.** The enrichment pipeline (`agent/enrichment/pipeline.py`) computes `segment_confidence` (dominant-signal confidence for the chosen ICP segment). Outbound email uses `confidence_phrasing()` to select one of three opener/claim-strength modes:
+  - `direct` (confidence ≥ 0.8): assertive opener + unqualified signal line
+  - `hedged` (0.5 ≤ confidence < 0.8): assertive opener softened with “Based on the signals we’ve seen…”
+  - `exploratory` (confidence < 0.5): explicitly non-assertive opener + “might be relevant… Is this on your radar?”
+
+  This is enforced in the outbound path (`agent/workflows/lead_orchestrator.py`, `send_outbound_email()`), where phrasing is computed from `segment_confidence` and passed into `_segment_opener(company, segment, phrasing)`. This closes P-005 by making the **opener itself** confidence-sensitive (not just a trailing signal line).
+
+- **Re-implementability spec (production).**
+
+  - **Entry point**: `agent/workflows/lead_orchestrator.py::send_outbound_email()`
+  - **Phrasing tier mapping**: `agent/enrichment/ai_maturity.py::confidence_phrasing()`
+  - **Confidence source**: `agent/enrichment/pipeline.py` sets `segment_confidence` on the `HiringSignalBrief` (and persists it into outbound payloads).
+  - **Guardrail**: `_require_bench_gate(bench_to_brief_gate_passed=...)` prevents assertive outreach when the bench-to-brief gate fails.
+
+  Hyperparameters (actual values in code):
+  - \(t_{\text{direct}} = 0.8\)
+  - \(t_{\text{hedged}} = 0.5\)
+
+- **Ablations (for reproducibility).**
+  1. **Ablation A (baseline)**: opener uses static segment opener regardless of confidence; only the signal summary line is hedged.
+  2. **Ablation B (current method)**: opener + signal line both use the `confidence_phrasing()` tier (direct/hedged/exploratory).
+  3. **Ablation C**: use overall mean confidence instead of `segment_confidence` to choose phrasing tier (tests whether per-segment confidence is necessary).
+
+- **Stat plan (production).**
+  - **Primary metric**: P-005 trigger rate (assertive Segment 1 opener when confidence is exploratory).
+  - **Test**: Fisher’s exact test comparing trigger counts across N deterministic probe runs (α = 0.05).
+  - **How to run**: `uv run python scripts/run_probes.py` for the deterministic subset and inspect `probes/probe_results.json` for P-005.
+
 - **Why it is not the official sealed method.** The τ²-Bench retail benchmark does not exercise the conversion-engine outreach workflow. Running the confidence gate against τ² tasks would have no effect on benchmark scores. The `dual_control_v2` coordination prompt operates at the τ² agent layer and directly targets the failure modes that the benchmark measures.
 - **Status.** The confidence gate remains merged and active in the production code path. It is prior work within this engagement. The `dual_control_v2` prompt is the Act IV mechanism for all sealed benchmark comparisons.
 
