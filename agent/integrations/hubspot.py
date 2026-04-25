@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import json
 import os
+import re
 import shutil
 import threading
 from typing import Any
@@ -218,10 +219,22 @@ class HubSpotClient:
         source: str,
         properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        identifier = (identifier or "").strip()
+        if not identifier:
+            raise ValueError(
+                "HubSpot upsert_contact requires a non-empty identifier (email or E.164 phone)."
+            )
+        is_email = "@" in identifier
+        is_e164 = re.fullmatch(r"^\+[1-9]\d{1,14}$", identifier) is not None
+        if not is_email and not is_e164:
+            raise ValueError(
+                "HubSpot upsert_contact identifier must be an email or E.164 phone number. "
+                f"Got: {identifier!r}"
+            )
         props = self._stringify_properties(dict(properties or {}))
         props.setdefault("lead_source", source)
 
-        if "@" in identifier:
+        if is_email:
             props["email"] = identifier
 
             def search_fn() -> dict[str, Any] | None:
