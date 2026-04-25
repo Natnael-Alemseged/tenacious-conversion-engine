@@ -115,3 +115,37 @@ def test_sms_json_body_returns_415(tmp_path, monkeypatch) -> None:
 
     assert response.status_code == 415
     assert response.json()["detail"]["error"]["code"] == "unsupported_media_type"
+
+
+def test_duplicate_sms_message_id_is_ignored(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        webhooks.settings,
+        "sms_suppression_path",
+        _suppression_path(tmp_path),
+    )
+    monkeypatch.setattr(
+        webhooks.settings,
+        "outbound_enabled",
+        False,
+    )
+    monkeypatch.setattr(
+        webhooks.settings,
+        "outbound_sink_phone",
+        "+15555550123",
+    )
+    webhooks._recent_sms_events.clear()
+    webhooks._recent_sms_events_order.clear()
+
+    first = client.post(
+        "/webhooks/sms",
+        data={"from": "+251911000000", "to": "12345", "text": "hello", "id": "sms-dup-1"},
+    )
+    second = client.post(
+        "/webhooks/sms",
+        data={"from": "+251911000000", "to": "12345", "text": "hello", "id": "sms-dup-1"},
+    )
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "accepted"
+    assert second.status_code == 200
+    assert second.json()["status"] == "duplicate"

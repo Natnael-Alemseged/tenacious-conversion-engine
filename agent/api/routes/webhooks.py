@@ -1,4 +1,5 @@
 import logging
+import threading
 from email.utils import parseaddr
 from typing import Any
 
@@ -19,6 +20,13 @@ orchestrator = LeadOrchestrator()
 _log = logging.getLogger(__name__)
 STOP_KEYWORDS = {"STOP", "UNSUB", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"}
 HELP_KEYWORDS = {"HELP"}
+_RECENT_EMAIL_EVENTS_MAX = 512
+_recent_email_events: dict[str, None] = {}
+_recent_email_events_order: list[str] = []
+_recent_email_events_lock = threading.Lock()
+_RECENT_SMS_EVENTS_MAX = 512
+_recent_sms_events: dict[str, None] = {}
+_recent_sms_events_order: list[str] = []
 
 BOUNCE_EVENT_TYPES = {"email.bounced", "email.complained", "email.delivery_delayed"}
 IGNORED_EMAIL_EVENT_TYPES = {"email.sent", "email.delivered", "email.opened", "email.clicked"}
@@ -133,6 +141,46 @@ def _normalize_resend_event(raw: dict[str, Any]) -> InboundEmailEvent:
         bounce_type=str(data.get("bounce_type") or ""),
         received_at=received_at,
     )
+
+
+def _email_event_dedupe_key(event: InboundEmailEvent) -> str:
+    if not event.message_id:
+        return ""
+    return f"{event.event_type}:{event.message_id}"
+
+
+def _remember_email_event(key: str) -> bool:
+    if not key:
+        return False
+    with _recent_email_events_lock:
+        if key in _recent_email_events:
+            return True
+        _recent_email_events[key] = None
+        _recent_email_events_order.append(key)
+        if len(_recent_email_events_order) > _RECENT_EMAIL_EVENTS_MAX:
+            oldest = _recent_email_events_order.pop(0)
+            _recent_email_events.pop(oldest, None)
+        return False
+
+
+def _sms_event_dedupe_key(event: InboundSmsEvent) -> str:
+    if not event.message_id:
+        return ""
+    return f"sms:{event.message_id}"
+
+
+def _remember_sms_event(key: str) -> bool:
+    if not key:
+        return False
+    with _recent_email_events_lock:
+        if key in _recent_sms_events:
+            return True
+        _recent_sms_events[key] = None
+        _recent_sms_events_order.append(key)
+        if len(_recent_sms_events_order) > _RECENT_SMS_EVENTS_MAX:
+            oldest = _recent_sms_events_order.pop(0)
+            _recent_sms_events.pop(oldest, None)
+        return False
 
 
 async def _parse_email_event(request: Request) -> tuple[str, InboundEmailEvent | None]:
@@ -335,6 +383,18 @@ async def inbound_email(request: Request) -> dict[str, str]:
         )
         return {"status": "bounce_recorded", "event_type": event.event_type}
 
+    dedupe_key = _email_event_dedupe_key(event)
+    if _remember_email_event(dedupe_key):
+        _log.info(
+            "webhooks.email",
+            extra=_route_log_extra(
+                route="webhooks.email",
+                outcome="success",
+                status_code=200,
+            ),
+        )
+        return {"status": "duplicate", "event_type": event.event_type}
+
     try:
         orchestrator.handle_email(event)
     except Exception as exc:
@@ -466,6 +526,18 @@ async def inbound_sms(request: Request) -> dict[str, str]:
             "status": "ignored",
             "message": "Number is currently unsubscribed.",
         }
+
+    dedupe_key = _sms_event_dedupe_key(event)
+    if _remember_sms_event(dedupe_key):
+        _log.info(
+            "webhooks.sms",
+            extra=_route_log_extra(
+                route="webhooks.sms",
+                outcome="success",
+                status_code=200,
+            ),
+        )
+        return {"status": "duplicate"}
 
     try:
         orchestrator.handle_sms(event)

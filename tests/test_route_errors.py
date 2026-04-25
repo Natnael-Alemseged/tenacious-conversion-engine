@@ -181,6 +181,32 @@ def test_email_webhook_ignores_non_actionable_resend_events(monkeypatch) -> None
     assert response.json() == {"status": "ignored", "event_type": "email.sent"}
 
 
+def test_email_webhook_deduplicates_repeated_message_ids(monkeypatch) -> None:
+    orchestrator = CapturingWebhookOrchestrator()
+    monkeypatch.setattr(webhooks, "orchestrator", orchestrator)
+    monkeypatch.setattr(webhooks.settings, "resend_webhook_signing_secret", "")
+    webhooks._recent_email_events.clear()
+    webhooks._recent_email_events_order.clear()
+    client = TestClient(app)
+
+    payload = {
+        "event_type": "email.replied",
+        "from_email": "lead@example.com",
+        "subject": "Interested",
+        "body": "Let's talk.",
+        "message_id": "<msg-dup-1>",
+    }
+
+    first = client.post("/webhooks/email", json=payload)
+    second = client.post("/webhooks/email", json=payload)
+
+    assert first.status_code == 200
+    assert first.json() == {"status": "accepted"}
+    assert second.status_code == 200
+    assert second.json() == {"status": "duplicate", "event_type": "email.replied"}
+    assert len(orchestrator.email_events) == 1
+
+
 def test_sms_webhook_returns_503_on_unreachable_upstream(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(webhooks, "orchestrator", FailingWebhookOrchestrator())
     monkeypatch.setattr(
