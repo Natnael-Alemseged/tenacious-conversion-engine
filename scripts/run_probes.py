@@ -56,21 +56,15 @@ def _record(
 
 
 def probe_P001() -> tuple[int, list[str], list[str]]:
-    """Layoff+funding → should be Segment 2, pipeline assigns Segment 1."""
+    """Layoff+funding → must be Segment 2, not Segment 1."""
+    from agent.enrichment.pipeline import _classify_segment
 
-    # Mock data: funding 60 days ago + layoff 45 days ago
     now = datetime.now(UTC)
-    mock_funding = [
-        {
-            "investment_type": "series_b",
-            "money_raised_usd": 18_000_000,
-            "announced_on": (now - timedelta(days=60)).isoformat(),
-        }
-    ]
+    mock_funding = [{"investment_type": "series_b", "money_raised_usd": 18_000_000}]
     mock_layoffs = [
         {
             "company": "NovaCure Analytics",
-            "date": (now - timedelta(days=45)).isoformat(),
+            "date": now.isoformat(),
             "laid_off_count": "35",
             "percentage": "22",
         }
@@ -79,17 +73,16 @@ def probe_P001() -> tuple[int, list[str], list[str]]:
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        # Simulate the pipeline classification logic directly
-        icp_segment = 0
-        if mock_funding:
-            icp_segment = 1  # Bug: funding check is first, no layoff override
-        elif mock_layoffs:
-            icp_segment = 2
-        # Correct logic would be: if layoffs AND funding → Segment 2
-        expected = 2
-        if icp_segment != expected:
+        seg = _classify_segment(
+            funding=mock_funding,
+            layoff_events=mock_layoffs,
+            leader_changes=None,
+            ai_score=0,
+            open_roles=10,
+        )
+        if seg != 2:
             triggered += 1
-            details.append(f"assigned segment={icp_segment}, expected={expected}")
+            details.append(f"Expected segment=2, got segment={seg}")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
@@ -141,26 +134,25 @@ def probe_P003() -> tuple[int, list[str], list[str]]:
 
 
 def probe_P004() -> tuple[int, list[str], list[str]]:
-    """Zero open roles passes Segment 1 filter (pipeline doesn't check open_roles)."""
-    triggered, trace_ids, details = 0, [], []
-    now = datetime.now(UTC)
-    mock_funding = [
-        {
-            "investment_type": "series_a",
-            "money_raised_usd": 9_000_000,
-            "announced_on": (now - timedelta(days=60)).isoformat(),
-        }
-    ]
-    open_roles = 0
+    """Zero open roles must NOT qualify for Segment 1."""
+    from agent.enrichment.pipeline import _classify_segment
 
+    mock_funding = [{"investment_type": "series_a", "money_raised_usd": 9_000_000}]
+    triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        # Simulate pipeline: assigns Segment 1 if funding exists, regardless of open_roles
-        icp_segment = 1 if mock_funding else 0
-        # ICP definition: Segment 1 requires "at least five open engineering roles"
-        if icp_segment == 1 and open_roles < 5:
+        seg_zero = _classify_segment(
+            funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=0
+        )
+        seg_five = _classify_segment(
+            funding=mock_funding, layoff_events=None, leader_changes=None, ai_score=0, open_roles=5
+        )
+        if seg_zero == 1:
             triggered += 1
-            details.append(f"Segment 1 assigned with open_roles={open_roles} (threshold: 5)")
+            details.append("Segment 1 assigned with 0 open roles (expected 0)")
+        if seg_five != 1:
+            triggered += 1
+            details.append(f"Segment 1 not assigned with 5 open roles (got {seg_five})")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 

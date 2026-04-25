@@ -87,6 +87,29 @@ def _segment_confidence(
     return max(funding_confidence, layoffs_confidence, leadership_confidence, jobs_confidence) * 0.5
 
 
+SEGMENT_1_MIN_OPEN_ROLES: int = 5
+
+
+def _classify_segment(
+    *,
+    funding: list | None,
+    layoff_events: list | None,
+    leader_changes: list | None,
+    ai_score: int,
+    open_roles: int,
+) -> int:
+    """Return ICP segment with correct priority: layoff > funding > leadership > AI."""
+    if layoff_events:
+        return 2
+    if funding and open_roles >= SEGMENT_1_MIN_OPEN_ROLES:
+        return 1
+    if leader_changes:
+        return 3
+    if ai_score >= 2:
+        return 4
+    return 0
+
+
 def _infer_tech_stack(
     *,
     categories: list[str],
@@ -175,15 +198,13 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     ai_score, ai_justification, ai_confidence = ai_maturity.score(ai_signals)
     ai_meta = ai_maturity_confidence_meta(ai_confidence)
 
-    icp_segment = 0
-    if funding:
-        icp_segment = 1
-    elif layoff_events:
-        icp_segment = 2
-    elif leader_changes:
-        icp_segment = 3
-    elif ai_score >= 2:
-        icp_segment = 4
+    icp_segment = _classify_segment(
+        funding=funding,
+        layoff_events=layoff_events,
+        leader_changes=leader_changes,
+        ai_score=ai_score,
+        open_roles=jobs.get("open_roles", 0),
+    )
     segment_confidence = _segment_confidence(
         icp_segment=icp_segment,
         funding_confidence=funding_confidence,
