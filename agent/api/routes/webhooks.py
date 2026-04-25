@@ -11,6 +11,7 @@ from starlette.datastructures import UploadFile
 
 from agent.core.config import settings
 from agent.integrations.africastalking_sms import AfricasTalkingSendError
+from agent.integrations.hubspot import HubSpotMcpError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.storage.conversations import ConversationStore
 from agent.storage.suppression import SmsSuppressionStore
@@ -61,6 +62,17 @@ def _route_log_extra(
 def _route_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, HubSpotMcpError):
+        # HubSpot transport flakes should look retriable (503) rather than
+        # "our server crashed" (500).
+        # Keep 502 for real upstream HTTP statuses; keep 503 for MCP/transport flakiness.
+        status = 502 if exc.error_kind == "http_status" else 503
+        headers = {"Retry-After": "5"} if status == 503 else None
+        return HTTPException(
+            status_code=status,
+            detail=f"HubSpot integration error ({exc.error_kind}): {exc.detail[:500]}",
+            headers=headers,
+        )
     if isinstance(exc, httpx.HTTPStatusError):
         detail = (
             f"Upstream integration returned HTTP {exc.response.status_code}: "
@@ -76,6 +88,8 @@ def _route_error(exc: Exception) -> HTTPException:
 
 
 def _verify_resend_webhook(payload: str, request: Request) -> None:
+    if not settings.resend_webhook_verify:
+        return
     if not settings.resend_webhook_signing_secret:
         return
     try:
