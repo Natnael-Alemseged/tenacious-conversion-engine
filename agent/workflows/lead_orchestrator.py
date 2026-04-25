@@ -85,6 +85,27 @@ def _segment_opener(company_name: str, segment: int, phrasing: str) -> str:
     return exploratory_openers.get(segment, exploratory_openers[0])
 
 
+_SUBJECT_SUFFIXES: dict[int, str] = {
+    0: ": quick thought",
+    1: ": scaling after your recent raise",
+    2: ": doing more with your current team",
+    3: ": working with new technical leadership",
+    4: ": closing the AI capability gap",
+}
+_SUBJECT_MAX_LEN: int = 60
+
+
+def _build_subject(company_name: str, segment: int) -> str:
+    suffix = _SUBJECT_SUFFIXES.get(segment, _SUBJECT_SUFFIXES[0])
+    subject = company_name + suffix
+    if len(subject) <= _SUBJECT_MAX_LEN:
+        return subject
+    max_company = _SUBJECT_MAX_LEN - len(suffix)
+    if max_company >= 4:
+        return company_name[:max_company].rstrip() + suffix
+    return subject[: _SUBJECT_MAX_LEN - 1] + "…"
+
+
 def _outbound_email_log_extra(
     *,
     outcome: str,
@@ -406,15 +427,8 @@ class LeadOrchestrator:
         crunchbase_id: str | None = None,
         bench_to_brief_gate_passed: bool = True,
     ) -> dict[str, Any]:
-        _subjects: dict[int, str] = {
-            0: f"{company_name}: quick thought",
-            1: f"{company_name}: scaling after your recent raise",
-            2: f"{company_name}: doing more with your current team",
-            3: f"{company_name}: working with new technical leadership",
-            4: f"{company_name}: closing the AI capability gap",
-        }
-        seg = icp_segment if icp_segment in _subjects else 0
-        subject = _subjects[seg]
+        seg = icp_segment if icp_segment in _SUBJECT_SUFFIXES else 0
+        subject = _build_subject(company_name, seg)
         phrasing = confidence_phrasing(confidence) if confidence is not None else "hedged"
         opener = _segment_opener(company_name, seg, phrasing)
 

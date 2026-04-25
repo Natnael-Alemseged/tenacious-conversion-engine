@@ -353,13 +353,8 @@ def probe_P012() -> tuple[int, list[str], list[str]]:
 
 def probe_P015() -> tuple[int, list[str], list[str]]:
     """Subject lines from the template — check length ≤ 60 chars."""
-    _subjects = {
-        0: "{company}: quick thought",
-        1: "{company}: scaling after your recent raise",
-        2: "{company}: doing more with your current team",
-        3: "{company}: working with new technical leadership",
-        4: "{company}: closing the AI capability gap",
-    }
+    from agent.workflows.lead_orchestrator import _SUBJECT_SUFFIXES, _build_subject
+
     test_companies = [
         "Acme",
         "DataBridge Analytics Corporation",
@@ -368,9 +363,9 @@ def probe_P015() -> tuple[int, list[str], list[str]]:
     ]
     triggered, trace_ids, details = 0, [], []
     for company in test_companies:
-        for seg, template in _subjects.items():
+        for seg in _SUBJECT_SUFFIXES:
             tid = _trace_id()
-            subject = template.replace("{company}", company)
+            subject = _build_subject(company, seg)
             if len(subject) > 60:
                 triggered += 1
                 details.append(
