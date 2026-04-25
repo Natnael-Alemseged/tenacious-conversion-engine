@@ -7,7 +7,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from act5.autoresponder import classify_autoresponder, load_heuristics
-from act5.outbound_events import append_outbound_event, append_reply_classification, now_iso
+from act5.outbound_events import (
+    append_outbound_event,
+    append_reply_classification,
+    append_thread_outcome,
+    now_iso,
+)
 from agent.core.config import settings
 from agent.enrichment.ai_maturity import confidence_phrasing
 from agent.enrichment.pipeline import run as run_enrichment_pipeline
@@ -741,6 +746,17 @@ class LeadOrchestrator:
                         "is_autoresponder": inbound_class.is_autoresponder,
                         "matched_on": inbound_class.matched_on,
                         "matched_pattern": inbound_class.matched_pattern,
+                    }
+                )
+                append_thread_outcome(
+                    {
+                        "recorded_at": now_iso(),
+                        "hubspot_contact_id": hubspot_contact_id,
+                        "resend_thread_key": resend_thread_key,
+                        "booking_created": bool(booking_result is not None),
+                        "booking_requested": bool(booking_requested),
+                        "reply_status": str(result.get("reply", {}).get("status", "")),
+                        "reply_reason": str(result.get("reply", {}).get("reason", "")),
                     }
                 )
                 self._emit_reply_handler(channel="email", result=result, event=event)
