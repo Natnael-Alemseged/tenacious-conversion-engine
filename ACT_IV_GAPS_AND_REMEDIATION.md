@@ -11,7 +11,7 @@ This file tracks what remains after the Act IV deterministic probe ablation. The
 | True held-out Delta A is missing | Missing | Compare Day-1 baseline vs Act IV method on sealed held-out with 95% CI separation and p < 0.05. |
 | Delta B and Delta C are missing | Missing | Report method vs automated baseline and method vs the published tau2-Bench reference. |
 | p95 latency from real tasks is missing | Missing | Aggregate p95 latency from real held-out traces rather than deterministic probes. |
-| Confidence mechanism is not wired end-to-end | Valid gap | Add a production path that runs `agent.enrichment.pipeline.run()` and passes `brief.icp_segment`, `brief.segment_confidence`, `brief.signals.ai_maturity.score`, and `brief.signals.bench.data.bench_to_brief_gate_passed` into `LeadOrchestrator.send_outbound_email()`. |
+| Confidence mechanism is wired end-to-end for inbound email | Addressed | `LeadOrchestrator.handle_email()` now runs `agent.enrichment.pipeline.run()`, writes the resulting ICP/confidence fields to HubSpot, and passes `brief.icp_segment`, `brief.segment_confidence`, `brief.signals.ai_maturity.score`, and `brief.signals.bench.data.bench_to_brief_gate_passed` into the confidence-aware email reply path when outbound routing is configured. |
 
 ## Known System Gaps From Act III
 

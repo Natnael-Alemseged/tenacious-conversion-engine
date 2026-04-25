@@ -7,6 +7,8 @@ from typing import Any
 
 from agent.core.config import settings
 from agent.enrichment.ai_maturity import confidence_phrasing
+from agent.enrichment.pipeline import run as run_enrichment_pipeline
+from agent.enrichment.schemas import HiringSignalBrief
 from agent.integrations.africastalking_sms import AfricasTalkingSmsClient
 from agent.integrations.calcom import CalComClient
 from agent.integrations.hubspot import HubSpotClient
@@ -18,6 +20,7 @@ from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_re
 DownstreamEventHandler = (
     Callable[[str, dict[str, Any], InboundEmailEvent | InboundSmsEvent], None] | None
 )
+EnrichmentRunner = Callable[..., HiringSignalBrief]
 
 _log = logging.getLogger(__name__)
 
@@ -189,6 +192,48 @@ def _require_bench_gate(*, bench_to_brief_gate_passed: bool, operation: str) -> 
         )
 
 
+def _company_name_from_email(email: str) -> str:
+    domain = _email_domain(email)
+    if not domain:
+        return "your team"
+    root = domain.split(".")[0].replace("-", " ").replace("_", " ").strip()
+    return root.title() if root else "your team"
+
+
+def _booking_intent(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        token in lowered
+        for token in (
+            "book",
+            "calendar",
+            "cal.com",
+            "call",
+            "demo",
+            "meet",
+            "meeting",
+            "schedule",
+            "time to talk",
+        )
+    )
+
+
+def _signal_summary_from_brief(brief: HiringSignalBrief) -> str:
+    parts: list[str] = []
+    if brief.signals.funding.data:
+        parts.append("public funding signals")
+    if brief.signals.layoffs.data:
+        parts.append("restructuring signals")
+    open_roles = brief.signals.job_posts.data.get("open_roles", 0)
+    if open_roles:
+        parts.append(f"{open_roles} open roles in the current hiring signal")
+    if brief.signals.ai_maturity.score:
+        parts.append(f"AI maturity score {brief.signals.ai_maturity.score}/3")
+    if parts:
+        return "We found " + ", ".join(parts) + "."
+    return "We found limited public signal, so this is best treated as an exploratory fit check."
+
+
 class LeadOrchestrator:
     def __init__(
         self,
@@ -199,6 +244,7 @@ class LeadOrchestrator:
         sms: AfricasTalkingSmsClient | None = None,
         reply_handler: DownstreamEventHandler = None,
         bounce_handler: DownstreamEventHandler = None,
+        enrichment_runner: EnrichmentRunner | None = None,
     ) -> None:
         self.hubspot = hubspot or HubSpotClient()
         self.calcom = calcom or CalComClient()
@@ -207,6 +253,7 @@ class LeadOrchestrator:
         self.sms = sms or AfricasTalkingSmsClient()
         self.reply_handler = reply_handler
         self.bounce_handler = bounce_handler
+        self.enrichment_runner = enrichment_runner or run_enrichment_pipeline
 
     def register_reply_handler(self, handler: DownstreamEventHandler) -> None:
         self.reply_handler = handler
@@ -259,17 +306,37 @@ class LeadOrchestrator:
         )
 
     def handle_email(self, event: InboundEmailEvent) -> dict[str, Any]:
+        company_name = _company_name_from_email(str(event.from_email))
+        brief = self.enrichment_runner(company_name=company_name)
+        signal_summary = _signal_summary_from_brief(brief)
+        booking_requested = _booking_intent(f"{event.subject}\n{event.body}")
         enrichment_props = {
             "lead_source": "inbound_email_reply",
             "last_email_reply_at": event.received_at.isoformat(),
             "last_email_subject": event.subject,
             "email_replied": "true",
             "enrichment_timestamp": _now_iso(),
+            "icp_segment": str(brief.icp_segment),
+            "segment_confidence": f"{brief.segment_confidence:.3f}",
+            "overall_confidence": f"{brief.overall_confidence:.3f}",
+            "overall_confidence_weighted": f"{brief.overall_confidence_weighted:.3f}",
+            "ai_maturity_score": str(brief.signals.ai_maturity.score),
+            "ai_maturity_confidence": f"{brief.signals.ai_maturity.confidence:.3f}",
+            "bench_to_brief_gate_passed": str(
+                brief.signals.bench.data.bench_to_brief_gate_passed
+            ).lower(),
+            "enrichment_summary": signal_summary[:1000],
+            "honesty_flags": ", ".join(brief.honesty_flags)[:1000],
         }
         with self.langfuse.trace_workflow("handle_email", event.model_dump(mode="json")):
             with self.langfuse.span(
                 "hubspot.upsert_contact",
-                input={"identifier": event.from_email, "source": "email"},
+                input={
+                    "identifier": event.from_email,
+                    "source": "email",
+                    "icp_segment": brief.icp_segment,
+                    "segment_confidence": brief.segment_confidence,
+                },
             ) as span:
                 try:
                     result = self.hubspot.upsert_contact(
@@ -296,6 +363,51 @@ class LeadOrchestrator:
                     raise
                 if span:
                     span.update(output=result)
+                bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
+                can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
+                if can_route_reply and bench_gate_passed:
+                    reply_signal_summary = signal_summary
+                    if booking_requested:
+                        if settings.calcom_username:
+                            reply_signal_summary = (
+                                f"{signal_summary} If useful, you can pick a time here: "
+                                f"https://cal.com/{settings.calcom_username}."
+                            )
+                        else:
+                            reply_signal_summary = (
+                                f"{signal_summary} I can send a few scheduling options if "
+                                "you want to compare calendars."
+                            )
+                    reply_result = self.send_outbound_email(
+                        to_email=str(event.from_email),
+                        company_name=brief.company_name,
+                        signal_summary=reply_signal_summary,
+                        icp_segment=brief.icp_segment,
+                        ai_maturity_score=brief.signals.ai_maturity.score,
+                        confidence=brief.segment_confidence,
+                        bench_to_brief_gate_passed=bench_gate_passed,
+                    )
+                    result["reply"] = reply_result
+                else:
+                    reason = (
+                        "bench_to_brief_gate_failed"
+                        if not bench_gate_passed
+                        else "outbound_disabled_without_sink"
+                    )
+                    result["reply"] = {
+                        "status": "skipped",
+                        "reason": reason,
+                    }
+                result["enrichment"] = {
+                    "company_name": brief.company_name,
+                    "icp_segment": brief.icp_segment,
+                    "segment_confidence": brief.segment_confidence,
+                    "ai_maturity_score": brief.signals.ai_maturity.score,
+                    "bench_to_brief_gate_passed": (
+                        brief.signals.bench.data.bench_to_brief_gate_passed
+                    ),
+                    "booking_requested": booking_requested,
+                }
                 self._emit_reply_handler(channel="email", result=result, event=event)
                 _log.info(
                     "handle_email",

@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 import pytest
 
+from agent.enrichment.schemas import HiringSignalBrief
 from agent.integrations.resend_email import ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.workflows.lead_orchestrator import LeadOrchestrator
@@ -61,7 +62,71 @@ class NoUidCalComClient:
         return {"status": "success", "data": {}, **kwargs}
 
 
-def test_handle_email_records_trace_and_span() -> None:
+def _fake_brief(
+    *,
+    company_name: str = "Example",
+    icp_segment: int = 1,
+    segment_confidence: float = 0.82,
+    bench_gate: bool = True,
+) -> HiringSignalBrief:
+    meta = {"tier": "high", "factors": {}, "rationale_codes": []}
+    return HiringSignalBrief.model_validate(
+        {
+            "company_name": company_name,
+            "company_domain": "example.com",
+            "generated_at": "2026-04-25T00:00:00+00:00",
+            "icp_segment": icp_segment,
+            "segment_confidence": segment_confidence,
+            "overall_confidence": segment_confidence,
+            "overall_confidence_weighted": segment_confidence,
+            "signals": {
+                "crunchbase": {
+                    "data": {"uuid": "cb_123", "categories": ["software"]},
+                    "confidence": 0.8,
+                    "confidence_meta": meta,
+                },
+                "funding": {
+                    "data": [{"investment_type": "series_b"}],
+                    "confidence": 0.8,
+                    "confidence_meta": meta,
+                },
+                "layoffs": {"data": [], "confidence": 0.0, "confidence_meta": meta},
+                "leadership_change": {"data": [], "confidence": 0.0, "confidence_meta": meta},
+                "job_posts": {
+                    "data": {"open_roles": 6},
+                    "confidence": 0.7,
+                    "confidence_meta": meta,
+                },
+                "ai_maturity": {
+                    "score": 2,
+                    "justification": "AI signals present.",
+                    "confidence": 0.7,
+                    "confidence_meta": meta,
+                },
+                "bench": {
+                    "data": {
+                        "bench_to_brief_gate_passed": bench_gate,
+                        "required_stacks": ["python"],
+                        "available_counts": {"python": 2},
+                    },
+                    "confidence": 0.8,
+                    "confidence_meta": meta,
+                },
+            },
+            "honesty_flags": ["weak_hiring_velocity_signal"],
+        }
+    )
+
+
+def test_handle_email_records_trace_and_span(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        False,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_sink_email",
+        "",
+    )
     langfuse = FakeLangfuseClient()
     orchestrator = LeadOrchestrator(
         hubspot=FakeHubSpotClient(),
@@ -69,6 +134,7 @@ def test_handle_email_records_trace_and_span() -> None:
         langfuse=langfuse,
         resend=FakeResendClient(),
         sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: _fake_brief(),
     )
 
     result = orchestrator.handle_email(
@@ -86,10 +152,18 @@ def test_handle_email_records_trace_and_span() -> None:
         "span.start",
         {
             "name": "hubspot.upsert_contact",
-            "input": {"identifier": "lead@example.com", "source": "email"},
+            "input": {
+                "identifier": "lead@example.com",
+                "source": "email",
+                "icp_segment": 1,
+                "segment_confidence": 0.82,
+            },
             "output": None,
         },
     ) in langfuse.events
+    assert result["properties"]["icp_segment"] == "1"
+    assert result["enrichment"]["segment_confidence"] == 0.82
+    assert result["reply"]["status"] == "skipped"
 
 
 def test_send_follow_up_sms_records_trace_and_returns_sms_response(monkeypatch) -> None:
@@ -262,6 +336,7 @@ def test_inbound_reply_handlers_can_be_registered() -> None:
         resend=FakeResendClient(),
         sms=FakeSmsClient(),
         reply_handler=reply_handler,
+        enrichment_runner=lambda **_: _fake_brief(),
     )
 
     orchestrator.handle_email(
@@ -281,6 +356,43 @@ def test_inbound_reply_handlers_can_be_registered() -> None:
         ("email", "lead@example.com", "lead@example.com"),
         ("sms", "+251911000000", "+251911000000"),
     ]
+
+
+def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.calcom_username",
+        "tenacious-demo",
+    )
+    brief = _fake_brief(company_name="Acme", icp_segment=1, segment_confidence=0.2)
+    hubspot = FakeHubSpotClient()
+    orchestrator = LeadOrchestrator(
+        hubspot=hubspot,
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    result = orchestrator.handle_email(
+        InboundEmailEvent(
+            from_email="lead@acme.com",
+            subject="Can we schedule a call?",
+            body="I'd like to book a demo next week.",
+        )
+    )
+
+    assert result["properties"]["icp_segment"] == "1"
+    assert result["properties"]["segment_confidence"] == "0.200"
+    assert result["enrichment"]["booking_requested"] is True
+    assert result["reply"]["to_email"] == "lead@acme.com"
+    assert "clearly in growth mode" not in result["reply"]["html"]
+    assert "I do not want to over-read it" in result["reply"]["html"]
+    assert "https://cal.com/tenacious-demo" in result["reply"]["html"]
 
 
 def _make_orchestrator(
