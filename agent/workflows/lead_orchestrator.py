@@ -9,7 +9,12 @@ from typing import Any
 import httpx
 
 from act5.autoresponder import classify_autoresponder, load_heuristics
-from act5.outbound_events import append_outbound_event, append_reply_classification, now_iso
+from act5.outbound_events import (
+    append_outbound_event,
+    append_policy_event,
+    append_reply_classification,
+    now_iso,
+)
 from agent.core.config import settings
 from agent.enrichment.ai_maturity import confidence_phrasing
 from agent.enrichment.pipeline import run as run_enrichment_pipeline
@@ -21,7 +26,7 @@ from agent.integrations.langfuse import LangfuseClient
 from agent.integrations.resend_email import ResendClient, ResendSendError
 from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.storage.conversations import ConversationStore
-from agent.storage.suppression import EmailSuppressionStore
+from agent.storage.suppression import EmailSuppressionStore, SmsSuppressionStore
 from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
 from agent.workflows.doc_grounded_reply import build_doc_grounded_inbound_reply
 from agent.workflows.reply_intent import ReplyIntentResult, classify_reply_intent
@@ -462,6 +467,7 @@ class LeadOrchestrator:
         self.sms = sms or AfricasTalkingSmsClient()
         self.conversations = ConversationStore()
         self.email_suppression = EmailSuppressionStore(settings.email_suppression_path)
+        self.sms_suppression = SmsSuppressionStore(settings.sms_suppression_path)
         self.reply_handler = reply_handler
         self.bounce_handler = bounce_handler
         self.enrichment_runner = enrichment_runner or run_enrichment_pipeline
@@ -1432,6 +1438,49 @@ class LeadOrchestrator:
                     draft=bool(outbound_audit.get("draft", True)),
                     metadata=outbound_audit,
                 )
+                msgs = self.conversations.fetch_recent_messages(thread_id=thread_id, limit=200)
+                evs = self.conversations.fetch_events(thread_id=thread_id, limit=200)
+                prior = self.conversations.fetch_state(thread_id=thread_id)
+                new_state = recompute_state(messages=msgs, events=evs, prior_state=prior)
+                self.conversations.upsert_state(thread_id=thread_id, state=new_state)
+                attempt_count = new_state.get("outbound_sms_attempt_count") or 0
+                if (
+                    attempt_count >= 3
+                    and not new_state.get("sms_replied")
+                    and not new_state.get("sms_opted_out")
+                ):
+                    self.sms_suppression.suppress(to_phone, reason="cadence_exhausted")
+                    self.conversations.insert_event(
+                        thread_id=thread_id,
+                        event_type="sms_cadence_exhausted",
+                        payload={
+                            "to_phone": to_phone[-4:],
+                            "outbound_sms_attempt_count": attempt_count,
+                            "source": "send_warm_lead_sms",
+                        },
+                    )
+                    append_policy_event(
+                        {
+                            "event_type": "sms_cadence_exhausted",
+                            "decided_at": now_iso(),
+                            "channel": "sms",
+                            "to_phone": to_phone[-4:],
+                            "outbound_sms_attempt_count": attempt_count,
+                            "thread_id": thread_id,
+                            "action": "suppressed",
+                        }
+                    )
+                    _log.info(
+                        "send_warm_lead_sms",
+                        extra=_workflow_log_extra(
+                            workflow="send_warm_lead_sms",
+                            outcome="cadence_exhausted",
+                            phase="suppressed",
+                            identifier=to_phone,
+                            channel="sms",
+                            attempt_count=attempt_count,
+                        ),
+                    )
             try:
                 self.hubspot.upsert_contact(
                     identifier=to_phone,

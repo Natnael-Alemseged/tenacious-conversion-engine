@@ -58,6 +58,7 @@ def recompute_state(
     email_replied = _as_bool(prior_state.get("email_replied"), False)
     sms_replied = _as_bool(prior_state.get("sms_replied"), False)
     sms_opted_out = _as_bool(prior_state.get("sms_opted_out"), False)
+    outbound_sms_attempt_count = 0
     booking_requested = _as_bool(prior_state.get("booking_requested"), False)
     booking_created = _as_bool(prior_state.get("booking_created"), False)
     booking_uid = prior_state.get("booking_uid")
@@ -96,6 +97,8 @@ def recompute_state(
             if last_outbound_at is None or sent_at > last_outbound_at:
                 last_outbound_at = sent_at
                 last_channel = channel or last_channel
+            if channel == "sms":
+                outbound_sms_attempt_count += 1
             if msg.get("outbound_variant"):
                 outbound_variant = str(msg.get("outbound_variant") or "") or outbound_variant
 
@@ -141,6 +144,7 @@ def recompute_state(
         "segment_confidence": _as_float(segment_confidence),
         "ai_maturity_score": _as_int(ai_maturity_score),
         "outbound_variant": outbound_variant,
+        "outbound_sms_attempt_count": outbound_sms_attempt_count,
         "last_unanswered_question": last_unanswered_question,
         "qualification_json": qualification_json,
         "memory_json": memory_json,

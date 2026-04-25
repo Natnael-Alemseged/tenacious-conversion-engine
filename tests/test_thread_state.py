@@ -32,6 +32,36 @@ def test_recompute_state_sets_reply_flags_and_last_times() -> None:
     assert state["ai_maturity_score"] == 1
 
 
+def test_recompute_state_counts_outbound_sms_attempts() -> None:
+    t0 = datetime(2026, 4, 25, 9, 0, tzinfo=UTC)
+    t1 = datetime(2026, 4, 25, 9, 5, tzinfo=UTC)
+    t2 = datetime(2026, 4, 25, 9, 10, tzinfo=UTC)
+    state = recompute_state(
+        messages=[
+            {"direction": "outbound", "channel": "sms", "sent_at": t0},
+            {"direction": "outbound", "channel": "sms", "sent_at": t1},
+            {"direction": "outbound", "channel": "email", "sent_at": t2},
+        ],
+        events=[],
+    )
+    assert state["outbound_sms_attempt_count"] == 2
+    assert state["sms_replied"] is False
+
+
+def test_recompute_state_sms_reply_resets_not_counted() -> None:
+    t0 = datetime(2026, 4, 25, 9, 0, tzinfo=UTC)
+    t1 = datetime(2026, 4, 25, 9, 5, tzinfo=UTC)
+    state = recompute_state(
+        messages=[
+            {"direction": "outbound", "channel": "sms", "sent_at": t0},
+            {"direction": "inbound", "channel": "sms", "sent_at": t1},
+        ],
+        events=[],
+    )
+    assert state["outbound_sms_attempt_count"] == 1
+    assert state["sms_replied"] is True
+
+
 def test_recompute_state_opt_out_and_booking_events() -> None:
     state = recompute_state(
         messages=[],
