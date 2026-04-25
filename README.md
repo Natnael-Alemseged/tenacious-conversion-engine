@@ -209,6 +209,11 @@ uv run python scripts/generate_act5.py --strict-final
 
 Submission candidate: Act I is complete, the core Act II loop is partially implemented, Act III is complete, and the Act IV artifact package now includes sealed held-out, automated-baseline, and merged trace exports. The repo currently covers email-first outreach, warm-lead SMS, HubSpot write-back, Cal.com booking, hiring-signal enrichment, sink-routing safety, bench gating, the Act III adversarial probe package, and the tau2 coordination-prompt harness used for the sealed retail benchmark.
 
+## Schemas and worked examples
+
+- **Schemas**: `tenacious_sales_data/schemas/`
+- **Worked examples (schema-valid)**: `docs/worked_examples/`
+
 Act II items still deferred:
 
 - `competitor_gap_brief.json` rubric alignment: remove undisclosed sample padding, rank peer selection, and tighten schema requirements

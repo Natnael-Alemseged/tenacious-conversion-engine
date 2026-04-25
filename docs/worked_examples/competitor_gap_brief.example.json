@@ -1,0 +1,124 @@
+{
+  "prospect_domain": "orrin-labs.example",
+  "prospect_sector": "Business Intelligence / Analytics",
+  "prospect_sub_niche": "AI-augmented BI for mid-market",
+  "generated_at": "2026-04-22T08:18:00Z",
+  "prospect_ai_maturity_score": 2,
+  "sector_top_quartile_benchmark": 2.75,
+  "competitors_analyzed": [
+    {
+      "name": "Northview Analytics",
+      "domain": "northview-analytics.example",
+      "ai_maturity_score": 3,
+      "ai_maturity_justification": [
+        "Score 3/3 from 4/6 signal inputs. Active signals: named ai leadership, exec commentary, modern ml stack, strategic comms."
+      ],
+      "headcount_band": "80_to_200",
+      "top_quartile": true,
+      "sources_checked": [
+        "https://northview-analytics.example/team",
+        "https://northview-analytics.example/blog"
+      ]
+    },
+    {
+      "name": "Axiom Data Works",
+      "domain": "axiom-dataworks.example",
+      "ai_maturity_score": 3,
+      "ai_maturity_justification": [
+        "Score 3/3 from 3/6 signal inputs. Active signals: exec commentary, strategic comms, github activity."
+      ],
+      "headcount_band": "200_to_500",
+      "top_quartile": true,
+      "sources_checked": ["https://axiom-dataworks.example/investors"]
+    },
+    {
+      "name": "Pulsar Insights",
+      "domain": "pulsar-insights.example",
+      "ai_maturity_score": 3,
+      "ai_maturity_justification": [
+        "Score 3/3 from 3/6 signal inputs. Active signals: exec commentary, modern ml stack, named ai leadership."
+      ],
+      "headcount_band": "80_to_200",
+      "top_quartile": true,
+      "sources_checked": ["https://pulsar-insights.example/blog/eval-framework-2026"]
+    },
+    {
+      "name": "Meridian BI",
+      "domain": "meridian-bi.example",
+      "ai_maturity_score": 2,
+      "ai_maturity_justification": [
+        "Score 2/3 from 2/6 signal inputs. Active signals: github activity, modern ml stack."
+      ],
+      "headcount_band": "80_to_200",
+      "top_quartile": false,
+      "sources_checked": ["https://github.com/meridian-bi"]
+    },
+    {
+      "name": "Brightfold",
+      "domain": "brightfold.example",
+      "ai_maturity_score": 2,
+      "ai_maturity_justification": [
+        "Score 2/3 from 2/6 signal inputs. Active signals: exec commentary, github activity."
+      ],
+      "headcount_band": "80_to_200",
+      "top_quartile": false,
+      "sources_checked": ["https://brightfold.example/blog"]
+    }
+  ],
+  "gap_findings": [
+    {
+      "practice": "Dedicated AI/ML leadership role at the executive level",
+      "peer_evidence": [
+        {
+          "competitor_name": "Northview Analytics",
+          "evidence": "Detected leadership hint: VP of AI",
+          "source_url": "https://northview-analytics.example/team",
+          "fetched_at": "2026-04-22T08:17:10Z"
+        },
+        {
+          "competitor_name": "Pulsar Insights",
+          "evidence": "Detected leadership hint: Chief Scientist",
+          "source_url": "https://pulsar-insights.example/team",
+          "fetched_at": "2026-04-22T08:17:22Z"
+        }
+      ],
+      "prospect_state": "Prospect leadership-change inputs did not show a named AI/ML executive role in the current enrichment sources.",
+      "confidence": "medium",
+      "segment_relevance": ["segment_4_specialized_capability"]
+    },
+    {
+      "practice": "Public technical commentary on agentic or evaluation-framework work",
+      "peer_evidence": [
+        {
+          "competitor_name": "Pulsar Insights",
+          "evidence": "Technical blog post on evaluation framework, March 2026.",
+          "source_url": "https://pulsar-insights.example/blog/eval-framework-2026",
+          "fetched_at": "2026-04-22T08:16:40Z"
+        },
+        {
+          "competitor_name": "Northview Analytics",
+          "evidence": "CEO blog references agentic analytics as a 2026 priority.",
+          "source_url": "https://northview-analytics.example/blog",
+          "fetched_at": "2026-04-22T08:16:22Z"
+        }
+      ],
+      "prospect_state": "No strong public technical commentary signal was detected in the currently integrated sources; treat any gap claim as a research question.",
+      "confidence": "low",
+      "segment_relevance": ["segment_1_series_a_b"]
+    }
+  ],
+  "suggested_pitch_shift": "Lead with dedicated AI leadership as a research prompt; keep language exploratory unless evidence is high-confidence.",
+  "prospect_sector_percentile": 0.6,
+  "sparse_sector": false,
+  "gap_quality_self_check": {
+    "all_peer_evidence_has_source_url": true,
+    "at_least_one_gap_high_confidence": false,
+    "prospect_silent_but_sophisticated_risk": false
+  },
+  "benchmark_source": "explicit_sample_benchmark",
+  "benchmark_source_path": "tenacious_sales_data/schemas/sample_competitor_gap_brief.json",
+  "peer_score_histogram": { "score_0": 0, "score_1": 0, "score_2": 2, "score_3": 3 },
+  "rank_among_peers": 2,
+  "prospect_vs_top_quartile_mean_delta": -1.0
+}
+
