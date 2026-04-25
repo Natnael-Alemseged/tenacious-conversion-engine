@@ -54,6 +54,8 @@ class AiMaturitySignal(BaseModel):
     justification: str = ""
     confidence: float = Field(0.0, ge=0, le=1)
     confidence_meta: ConfidenceMeta | None = None
+    evidence_strength: float = Field(0.0, ge=0, le=1)
+    evidence: list[dict[str, str]] = Field(default_factory=list)
 
 
 class CrunchbaseSignal(BaseModel):

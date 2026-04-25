@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent.workflows.lead_orchestrator import LeadOrchestrator, _build_subject, _require_bench_gate
+from agent.models.webhooks import InboundSmsEvent
+from agent.workflows.lead_orchestrator import (
+    LeadOrchestrator,
+    _build_subject,
+    _require_bench_gate,
+)
 
 
 def test_subject_under_60_chars_unchanged() -> None:
@@ -50,6 +55,12 @@ def _make_orchestrator():
     orc.sms_suppression = MagicMock()
     orc.conversations = MagicMock()
     orc.conversations.enabled = False
+    thread = MagicMock()
+    thread.thread_id = "thread-123"
+    orc.conversations.resolve_thread_for_sms.return_value = thread
+    orc.conversations.fetch_state.return_value = None
+    orc.conversations.fetch_recent_messages.return_value = []
+    orc.conversations.fetch_events.return_value = []
     orc.reply_handler = None
     orc.bounce_handler = None
     return orc
@@ -173,3 +184,30 @@ def test_send_warm_lead_sms_suppresses_after_three_unanswered_attempts(tmp_path)
     orc.conversations.insert_event.assert_called_once()
     call_kwargs = orc.conversations.insert_event.call_args.kwargs
     assert call_kwargs["event_type"] == "sms_cadence_exhausted"
+
+
+def test_inbound_sms_booking_intent_includes_calcom_link_when_configured() -> None:
+    orc = _make_orchestrator()
+    orc.sms.send_sms.return_value = {"ok": True}
+    orc.hubspot.upsert_contact.return_value = {"id": "hs-1"}
+
+    event = InboundSmsEvent(
+        from_number="+251911000000",
+        to="12345",
+        text="Can we schedule a call?",
+        date="2026-01-01 00:00:00",
+        message_id="sms-1",
+    )
+
+    with patch("agent.workflows.lead_orchestrator.settings.calcom_username", "tenacious-demo"):
+        with patch("agent.workflows.lead_orchestrator.settings.outbound_enabled", False):
+            with patch(
+                "agent.workflows.lead_orchestrator.settings.outbound_sink_phone",
+                "+15555550123",
+            ):
+                result = orc.handle_sms(event)
+
+    assert result["reply"] != {"status": "skipped", "reason": "outbound_disabled_without_sink"}
+    assert orc.sms.send_sms.call_count == 1
+    sent_message = orc.sms.send_sms.call_args.kwargs.get("message", "")
+    assert "https://cal.com/tenacious-demo" in sent_message

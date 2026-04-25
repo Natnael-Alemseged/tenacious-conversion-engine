@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     sms_suppression_path: str = "./data/sms_suppression.json"
     email_suppression_path: str = "./data/email_suppression.json"
     bench_summary_path: str = "./tenacious_sales_data/seed/bench_summary.json"
+    hiring_velocity_store_path: str = "./data/hiring_velocity_snapshots.jsonl"
 
     # Conversation DB (Postgres conversation memory)
     conversation_db_enabled: bool = False

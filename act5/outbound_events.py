@@ -35,5 +35,12 @@ def append_reply_classification(record: dict[str, Any], *, path: Path | None = N
     out_path.open("a", encoding="utf-8").write(json.dumps(record, sort_keys=True) + "\n")
 
 
+def append_thread_outcome(record: dict[str, Any], *, path: Path | None = None) -> None:
+    out_dir = path if path is not None else _default_outbound_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "thread_outcomes.jsonl"
+    out_path.open("a", encoding="utf-8").write(json.dumps(record, sort_keys=True) + "\n")
+
+
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()

@@ -157,8 +157,14 @@ def to_public_hiring_signal_brief(brief: HiringSignalBrief) -> dict[str, object]
         },
         "hiring_velocity": {
             "open_roles_today": int(brief.signals.job_posts.data.get("open_roles") or 0),
-            "open_roles_60_days_ago": 0,
-            "velocity_label": "insufficient_signal",
+            "open_roles_60_days_ago": brief.signals.job_posts.data.get("open_roles_60_days_ago"),
+            "velocity_delta_60_days": brief.signals.job_posts.data.get("velocity_delta_60_days"),
+            "velocity_label": str(
+                brief.signals.job_posts.data.get("velocity_label") or "insufficient_signal"
+            ),
+            "velocity_snapshot_at": str(
+                brief.signals.job_posts.data.get("velocity_snapshot_at") or ""
+            ),
             "signal_confidence": brief.signals.job_posts.confidence,
             "sources": ["company_careers_page"] if brief.signals.job_posts.data.get("url") else [],
         },

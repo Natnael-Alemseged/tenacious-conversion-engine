@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from agent.core.config import settings
 from agent.enrichment import ai_maturity, crunchbase, job_posts, layoffs
+from agent.enrichment.ai_maturity_collectors.collectors import collect_all_ai_maturity_signals
 from agent.enrichment.bench_summary import bench_match, infer_required_stacks, load
 from agent.enrichment.schemas import (
     AiMaturitySignal,
@@ -39,6 +40,11 @@ from agent.enrichment.signal_confidence import (
 )
 from agent.enrichment.signal_confidence import (
     leadership_confidence as score_leadership_confidence,
+)
+from agent.enrichment.velocity_store import (
+    VelocitySnapshot,
+    append_snapshot,
+    compute_60_day_velocity,
 )
 
 
@@ -186,7 +192,32 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
         if careers_url
         else {"url": "", "open_roles": 0, "ai_adjacent_roles": 0}
     )
+    if careers_url and jobs and not jobs.get("error"):
+        domain_for_velocity = _company_domain(cb, careers_url)
+        if domain_for_velocity:
+            append_snapshot(
+                settings.hiring_velocity_store_path,
+                VelocitySnapshot(
+                    recorded_at=str(jobs.get("recorded_at") or _now_iso()),
+                    domain=domain_for_velocity,
+                    open_roles=int(jobs.get("open_roles") or 0),
+                    ai_adjacent_roles=int(jobs.get("ai_adjacent_roles") or 0),
+                    source_url=str(jobs.get("url") or careers_url),
+                ),
+            )
+            jobs.update(
+                compute_60_day_velocity(
+                    path=settings.hiring_velocity_store_path,
+                    domain=domain_for_velocity,
+                    open_roles_today=int(jobs.get("open_roles") or 0),
+                )
+            )
     jobs_confidence, jobs_meta = score_job_posts_confidence(careers_url=careers_url, jobs=jobs)
+
+    role_titles = list(jobs.get("role_titles") or [])
+    categories = (cb or {}).get("categories", []) or []
+    tech_stack = _infer_tech_stack(categories=categories, role_titles=role_titles)
+    company_domain = _company_domain(cb, careers_url)
 
     ai_signals: dict[str, Any] = {}
     if careers_url and not jobs.get("error") and jobs.get("open_roles", 0) > 0:
@@ -198,6 +229,13 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     )
     if leader_changes:
         ai_signals["named_ai_leadership"] = named_ai_leadership
+
+    extra_signals, ai_evidence, ai_evidence_strength = collect_all_ai_maturity_signals(
+        company_domain=company_domain,
+        tech_stack=tech_stack,
+        job_role_titles=role_titles,
+    )
+    ai_signals.update(extra_signals)
     ai_score, ai_justification, ai_confidence = ai_maturity.score(ai_signals)
     ai_meta = ai_maturity_confidence_meta(ai_confidence)
 
@@ -236,9 +274,6 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
     )
 
     bench = load(settings.bench_summary_path)
-    role_titles = jobs.get("role_titles") or []
-    categories = (cb or {}).get("categories", []) or []
-    tech_stack = _infer_tech_stack(categories=categories, role_titles=role_titles)
     required_stacks = infer_required_stacks(
         bench,
         tech_stack=tech_stack,
@@ -291,6 +326,8 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
         justification=ai_justification,
         confidence=ai_confidence,
         confidence_meta=ai_meta,
+        evidence_strength=ai_evidence_strength,
+        evidence=ai_evidence,
     )
     bench_block = BenchSignal(
         data=BenchSignalData(
@@ -349,7 +386,7 @@ def run(company_name: str, careers_url: str = "") -> HiringSignalBrief:
 
     return HiringSignalBrief(
         company_name=company_name,
-        company_domain=_company_domain(cb, careers_url),
+        company_domain=company_domain,
         generated_at=generated_at,
         icp_segment=icp_segment,
         segment_confidence=round(segment_confidence, 3),

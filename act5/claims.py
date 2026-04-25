@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from act5.metrics_outbound import compute_reply_rates
+from act5.metrics_threads import compute_thread_outcomes
+
 
 @dataclass(frozen=True)
 class Claim:
@@ -195,5 +198,128 @@ def build_claims(*, strict_final: bool) -> list[Claim]:
             },
         )
     )
+
+    # Outbound variant reply rates (required)
+    events_path = Path("eval/runs/outbound/events.jsonl")
+    reply_class_path = Path("eval/runs/outbound/reply_classification.jsonl")
+    if not events_path.exists() or not reply_class_path.exists():
+        if strict_final:
+            raise RuntimeError(
+                "Missing outbound events/reply logs required for competitive-gap metrics."
+            )
+    else:
+        rates = compute_reply_rates(events_path=events_path, reply_class_path=reply_class_path)
+        if "competitive_gap" not in rates or "generic" not in rates:
+            if strict_final:
+                raise RuntimeError("Missing competitive_gap or generic cohorts in outbound logs.")
+        else:
+            cg = rates["competitive_gap"]
+            gen = rates["generic"]
+            claims.append(
+                Claim(
+                    claim_id="competitive_gap_reply_rate",
+                    label="Competitive-gap outbound reply rate (non-autoresponder)",
+                    value={
+                        "reply_rate": cg.reply_rate,
+                        "replied_n": cg.replied_n,
+                        "outbound_n": cg.outbound_n,
+                        "population_ids": cg.population_ids,
+                    },
+                    unit="proportion",
+                    sources=[
+                        {"kind": "trace", "path": str(events_path)},
+                        {"kind": "trace", "path": str(reply_class_path)},
+                    ],
+                    derivation=(
+                        "Replies counted as inbound_email events matched to outbound threads, "
+                        "excluding autoresponders."
+                    ),
+                    recompute={"command": "uv run python scripts/run_outbound_variant_eval.py"},
+                )
+            )
+            claims.append(
+                Claim(
+                    claim_id="generic_reply_rate",
+                    label="Generic outbound reply rate (non-autoresponder)",
+                    value={
+                        "reply_rate": gen.reply_rate,
+                        "replied_n": gen.replied_n,
+                        "outbound_n": gen.outbound_n,
+                        "population_ids": gen.population_ids,
+                    },
+                    unit="proportion",
+                    sources=[
+                        {"kind": "trace", "path": str(events_path)},
+                        {"kind": "trace", "path": str(reply_class_path)},
+                    ],
+                    derivation="Same reply-rate definition as competitive-gap variant.",
+                    recompute={"command": "uv run python scripts/run_outbound_variant_eval.py"},
+                )
+            )
+            claims.append(
+                Claim(
+                    claim_id="competitive_gap_reply_rate_delta",
+                    label="Reply-rate delta: competitive-gap minus generic",
+                    value=cg.reply_rate - gen.reply_rate,
+                    unit="proportion",
+                    sources=[
+                        {
+                            "kind": "derived",
+                            "from": ["competitive_gap_reply_rate", "generic_reply_rate"],
+                        }
+                    ],
+                    derivation="Delta computed from the two per-variant reply rates.",
+                    recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+                )
+            )
+
+    # Stalled-thread and CPL denominators (required)
+    thread_outcomes_path = Path("eval/runs/outbound/thread_outcomes.jsonl")
+    if not thread_outcomes_path.exists():
+        if strict_final:
+            raise RuntimeError(
+                "Missing eval/runs/outbound/thread_outcomes.jsonl required for stalled/CPL."
+            )
+    else:
+        outcomes = compute_thread_outcomes(
+            thread_outcomes_path=thread_outcomes_path, reply_class_path=reply_class_path
+        )
+        claims.append(
+            Claim(
+                claim_id="stalled_thread_rate",
+                label="Stalled-thread rate (14d no booking proxy = no booking_created)",
+                value={
+                    "stalled_rate": outcomes.stalled_rate,
+                    "stalled_n": outcomes.stalled_n,
+                    "inbound_n": outcomes.inbound_n,
+                    "population_ids": outcomes.population_ids,
+                },
+                unit="proportion",
+                sources=[
+                    {"kind": "trace", "path": str(thread_outcomes_path)},
+                    {"kind": "trace", "path": str(reply_class_path)},
+                ],
+                derivation=(
+                    "Among non-autoresponder inbound replies, stalled if booking_created is false."
+                ),
+                recompute={"command": "uv run python scripts/run_outbound_variant_eval.py"},
+            )
+        )
+        total_cost = float(inv.get("total_cost_usd") or 0.0)
+        qualified = outcomes.booked_n
+        claims.append(
+            Claim(
+                claim_id="cost_per_qualified_lead",
+                label="Cost per qualified lead (USD) where qualified = booking_created",
+                value=(total_cost / qualified) if qualified else None,
+                unit="usd_per_qualified_lead",
+                sources=[
+                    {"kind": "trace", "path": "eval/runs/invoice_summary.json"},
+                    {"kind": "trace", "path": str(thread_outcomes_path)},
+                ],
+                derivation="CPL = total_cost_usd / booked_n (booking_created).",
+                recompute={"command": "uv run python scripts/generate_act5.py --strict-final"},
+            )
+        )
 
     return claims

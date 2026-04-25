@@ -13,6 +13,7 @@ from act5.outbound_events import (
     append_outbound_event,
     append_policy_event,
     append_reply_classification,
+    append_thread_outcome,
     now_iso,
 )
 from agent.core.config import settings
@@ -28,6 +29,11 @@ from agent.models.webhooks import InboundEmailEvent, InboundSmsEvent
 from agent.storage.conversations import ConversationStore
 from agent.storage.suppression import EmailSuppressionStore, SmsSuppressionStore
 from agent.workflows.booking_crm_writeback import upsert_contact_with_booking_retries
+from agent.workflows.channel_handoff import (
+    OutboundRoutingConfig,
+    should_send_email_reply,
+    should_send_sms_reply,
+)
 from agent.workflows.doc_grounded_reply import build_doc_grounded_inbound_reply
 from agent.workflows.reply_intent import ReplyIntentResult, classify_reply_intent
 from agent.workflows.thread_context import load_thread_context
@@ -319,6 +325,13 @@ def _booking_start_from_text(text: str) -> str | None:
     return start
 
 
+def _calcom_booking_url() -> str:
+    username = (settings.calcom_username or "").strip()
+    if not username:
+        return ""
+    return f"https://cal.com/{username}"
+
+
 def _signal_summary_from_brief(brief: HiringSignalBrief) -> str:
     parts: list[str] = []
     if brief.signals.funding.data:
@@ -373,6 +386,12 @@ def _build_inbound_sms_reply(*, event: InboundSmsEvent) -> str:
     focus = _extract_hiring_focus(event.text)
     lowered = event.text.lower()
     if _booking_intent(event.text):
+        booking_url = _calcom_booking_url()
+        if booking_url:
+            return (
+                "Happy to help. You can pick a slot here: "
+                f"{booking_url}. If you'd rather, share a preferred time + timezone overlap."
+            )
         return (
             "Happy to help. Share a preferred time, timezone overlap, and rough role count, "
             "or say 'schedule' and I can send next-step options."
@@ -659,9 +678,17 @@ class LeadOrchestrator:
                         company_domain=_email_domain(str(event.from_email or "")),
                     )
                 bench_gate_passed = brief.signals.bench.data.bench_to_brief_gate_passed
-                can_route_reply = settings.outbound_enabled or settings.outbound_sink_email
                 exploratory_reply_ok = brief.icp_segment == 0 or brief.segment_confidence < 0.6
-                reply_gate_passed = bench_gate_passed or exploratory_reply_ok
+                routing = OutboundRoutingConfig(
+                    outbound_enabled=settings.outbound_enabled,
+                    outbound_sink_email=settings.outbound_sink_email or "",
+                    outbound_sink_phone=settings.outbound_sink_phone or "",
+                )
+                reply_decision = should_send_email_reply(
+                    routing=routing,
+                    bench_gate_passed=bench_gate_passed,
+                    exploratory_reply_ok=exploratory_reply_ok,
+                )
                 booking_result: dict[str, Any] | None = None
                 if booking_requested and requested_booking_start and bench_gate_passed:
                     booking_result = self.book_discovery_call(
@@ -715,7 +742,7 @@ class LeadOrchestrator:
                             reply_reason=booking_reason,
                         ),
                     )
-                if can_route_reply and reply_gate_passed:
+                if reply_decision.action == "send":
                     if thread_id:
                         # Load thread context for future prompt-based reply generation.
                         result["thread_context"] = load_thread_context(
@@ -807,14 +834,9 @@ class LeadOrchestrator:
                         ),
                     )
                 else:
-                    reason = (
-                        "bench_to_brief_gate_failed"
-                        if not reply_gate_passed
-                        else "outbound_disabled_without_sink"
-                    )
                     result["reply"] = {
                         "status": "skipped",
-                        "reason": reason,
+                        "reason": reply_decision.reason,
                     }
                     # Still record reply classification even when skipping.
                     result["reply_classification"] = {
@@ -836,7 +858,7 @@ class LeadOrchestrator:
                             requested_booking_start=requested_booking_start or "",
                             booking_created=booking_result is not None,
                             reply_status="skipped",
-                            reply_reason=reason,
+                            reply_reason=reply_decision.reason,
                         ),
                     )
                 result["enrichment"] = {
@@ -902,6 +924,17 @@ class LeadOrchestrator:
                         },
                     )
                     self.conversations.upsert_state(thread_id=thread_id, state=derived)
+                append_thread_outcome(
+                    {
+                        "recorded_at": now_iso(),
+                        "hubspot_contact_id": hubspot_contact_id,
+                        "resend_thread_key": resend_thread_key,
+                        "booking_created": bool(booking_result is not None),
+                        "booking_requested": bool(booking_requested),
+                        "reply_status": str(result.get("reply", {}).get("status", "")),
+                        "reply_reason": str(result.get("reply", {}).get("reason", "")),
+                    }
+                )
                 self._emit_reply_handler(channel="email", result=result, event=event)
                 _log.info(
                     "handle_email",
@@ -1032,35 +1065,39 @@ class LeadOrchestrator:
                         lead_phone=event.from_number,
                     )
                 state = self.conversations.fetch_state(thread_id=thread_id) if thread_id else None
-                if state and bool(state.get("sms_opted_out")):
+                if isinstance(state, dict) and bool(state.get("sms_opted_out")):
                     result["reply"] = {"status": "skipped", "reason": "sms_opted_out"}
                     self._emit_reply_handler(channel="sms", result=result, event=event)
                     return result
-                can_route_reply = settings.outbound_enabled or settings.outbound_sink_phone
-                if can_route_reply:
+                routing = OutboundRoutingConfig(
+                    outbound_enabled=settings.outbound_enabled,
+                    outbound_sink_email=settings.outbound_sink_email or "",
+                    outbound_sink_phone=settings.outbound_sink_phone or "",
+                )
+                sms_decision = should_send_sms_reply(
+                    routing=routing,
+                    prior_email_replied=True,
+                    sms_suppressed=False,
+                )
+                if sms_decision.action == "send":
                     reply_text = _build_inbound_sms_reply(event=event)
-                    # Inbound SMS replies are always allowed to receive a reply message.
-                    # Warm-lead gating applies to proactive outbound SMS nudges, not reactive
-                    # replies.
-                    try:
-                        routed_to, _audit = _outbound_route(
-                            intended_to=str(event.from_number), channel="sms"
-                        )
-                        sms_result = self.sms.send_sms(to_phone=routed_to, message=reply_text)
-                        result["reply"] = sms_result
-                    except Exception as exc:
-                        self._log_workflow_failure(
-                            workflow="handle_sms",
-                            phase="reply_sms_send",
-                            identifier=event.from_number,
-                            channel="sms",
-                            exc=exc,
-                        )
-                        raise
+                    sms_result = self.send_warm_lead_sms(
+                        to_phone=event.from_number,
+                        company_name=(
+                            _company_name_from_email(f"team@{event.to}.example")
+                            if event.to
+                            else "your team"
+                        ),
+                        scheduling_hint=reply_text,
+                        prior_email_replied=True,
+                        message_override=reply_text,
+                        thread_id=thread_id or None,
+                    )
+                    result["reply"] = sms_result
                 else:
                     result["reply"] = {
                         "status": "skipped",
-                        "reason": "outbound_disabled_without_sink",
+                        "reason": sms_decision.reason,
                     }
                 if thread_id:
                     prior = self.conversations.fetch_state(thread_id=thread_id)

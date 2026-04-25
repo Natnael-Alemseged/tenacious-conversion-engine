@@ -25,8 +25,14 @@ def _funding_line(brief: HiringSignalBrief) -> str:
 def _hiring_velocity_line(brief: HiringSignalBrief) -> str:
     jobs = brief.signals.job_posts.data
     today = int(jobs.get("open_roles") or 0)
+    past = jobs.get("open_roles_60_days_ago")
+    label = str(jobs.get("velocity_label") or "insufficient_signal")
+    if past is None:
+        return f"- **Hiring velocity:** {today} open roles today → {label}"
+    delta = jobs.get("velocity_delta_60_days")
     return (
-        f"- **Hiring velocity:** {today} open roles today vs 0 sixty days ago → insufficient_signal"
+        f"- **Hiring velocity:** {today} open roles today vs {past} sixty days ago "
+        f"(Δ {delta}) → {label}"
     )
 
 
