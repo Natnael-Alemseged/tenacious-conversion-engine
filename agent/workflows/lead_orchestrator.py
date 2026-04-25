@@ -154,6 +154,48 @@ def _workflow_log_extra(
     }
 
 
+def _handle_email_log_extra(
+    *,
+    phase: str,
+    outcome: str,
+    identifier: str,
+    company_name: str = "",
+    icp_segment: int | None = None,
+    segment_confidence: float | None = None,
+    booking_requested: bool | None = None,
+    requested_booking_start: str = "",
+    booking_created: bool | None = None,
+    reply_status: str = "",
+    reply_reason: str = "",
+) -> dict[str, object]:
+    extra = _workflow_log_extra(
+        workflow="handle_email",
+        outcome=outcome,
+        phase=phase,
+        identifier=identifier,
+        channel="email",
+    )
+    extra.update(
+        {
+            "he_company_name": company_name[:255],
+            "he_icp_segment": "" if icp_segment is None else str(icp_segment),
+            "he_segment_confidence": (
+                "" if segment_confidence is None else f"{segment_confidence:.3f}"
+            ),
+            "he_booking_requested": (
+                "" if booking_requested is None else ("true" if booking_requested else "false")
+            ),
+            "he_requested_booking_start": requested_booking_start[:64],
+            "he_booking_created": (
+                "" if booking_created is None else ("true" if booking_created else "false")
+            ),
+            "he_reply_status": reply_status,
+            "he_reply_reason": reply_reason,
+        }
+    )
+    return extra
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -329,11 +371,33 @@ class LeadOrchestrator:
 
     def handle_email(self, event: InboundEmailEvent) -> dict[str, Any]:
         company_name = _company_name_from_email(str(event.from_email))
+        _log.info(
+            "handle_email",
+            extra=_handle_email_log_extra(
+                phase="start",
+                outcome="success",
+                identifier=str(event.from_email),
+                company_name=company_name,
+            ),
+        )
         brief = self.enrichment_runner(company_name=company_name)
         signal_summary = _signal_summary_from_brief(brief)
         inbound_text = f"{event.subject}\n{event.body}"
         booking_requested = _booking_intent(inbound_text)
         requested_booking_start = _booking_start_from_text(inbound_text)
+        _log.info(
+            "handle_email",
+            extra=_handle_email_log_extra(
+                phase="enrichment_complete",
+                outcome="success",
+                identifier=str(event.from_email),
+                company_name=brief.company_name,
+                icp_segment=brief.icp_segment,
+                segment_confidence=brief.segment_confidence,
+                booking_requested=booking_requested,
+                requested_booking_start=requested_booking_start or "",
+            ),
+        )
         enrichment_props = {
             "lead_source": "inbound_email_reply",
             "last_email_reply_at": event.received_at.isoformat(),
@@ -406,6 +470,41 @@ class LeadOrchestrator:
                         bench_to_brief_gate_passed=bench_gate_passed,
                     )
                     result["booking"] = booking_result
+                    _log.info(
+                        "handle_email",
+                        extra=_handle_email_log_extra(
+                            phase="booking_created",
+                            outcome="success",
+                            identifier=str(event.from_email),
+                            company_name=brief.company_name,
+                            icp_segment=brief.icp_segment,
+                            segment_confidence=brief.segment_confidence,
+                            booking_requested=booking_requested,
+                            requested_booking_start=requested_booking_start,
+                            booking_created=True,
+                        ),
+                    )
+                elif booking_requested:
+                    booking_reason = (
+                        "missing_booking_start"
+                        if not requested_booking_start
+                        else "bench_to_brief_gate_failed"
+                    )
+                    _log.info(
+                        "handle_email",
+                        extra=_handle_email_log_extra(
+                            phase="booking_skipped",
+                            outcome="success",
+                            identifier=str(event.from_email),
+                            company_name=brief.company_name,
+                            icp_segment=brief.icp_segment,
+                            segment_confidence=brief.segment_confidence,
+                            booking_requested=booking_requested,
+                            requested_booking_start=requested_booking_start or "",
+                            booking_created=False,
+                            reply_reason=booking_reason,
+                        ),
+                    )
                 if can_route_reply and bench_gate_passed:
                     reply_signal_summary = signal_summary
                     if booking_result is not None:
@@ -434,6 +533,21 @@ class LeadOrchestrator:
                         bench_to_brief_gate_passed=bench_gate_passed,
                     )
                     result["reply"] = reply_result
+                    _log.info(
+                        "handle_email",
+                        extra=_handle_email_log_extra(
+                            phase="reply_sent",
+                            outcome="success",
+                            identifier=str(event.from_email),
+                            company_name=brief.company_name,
+                            icp_segment=brief.icp_segment,
+                            segment_confidence=brief.segment_confidence,
+                            booking_requested=booking_requested,
+                            requested_booking_start=requested_booking_start or "",
+                            booking_created=booking_result is not None,
+                            reply_status="sent",
+                        ),
+                    )
                 else:
                     reason = (
                         "bench_to_brief_gate_failed"
@@ -444,6 +558,22 @@ class LeadOrchestrator:
                         "status": "skipped",
                         "reason": reason,
                     }
+                    _log.info(
+                        "handle_email",
+                        extra=_handle_email_log_extra(
+                            phase="reply_skipped",
+                            outcome="success",
+                            identifier=str(event.from_email),
+                            company_name=brief.company_name,
+                            icp_segment=brief.icp_segment,
+                            segment_confidence=brief.segment_confidence,
+                            booking_requested=booking_requested,
+                            requested_booking_start=requested_booking_start or "",
+                            booking_created=booking_result is not None,
+                            reply_status="skipped",
+                            reply_reason=reason,
+                        ),
+                    )
                 result["enrichment"] = {
                     "company_name": brief.company_name,
                     "icp_segment": brief.icp_segment,
@@ -459,12 +589,18 @@ class LeadOrchestrator:
                 self._emit_reply_handler(channel="email", result=result, event=event)
                 _log.info(
                     "handle_email",
-                    extra=_workflow_log_extra(
-                        workflow="handle_email",
-                        outcome="success",
+                    extra=_handle_email_log_extra(
                         phase="complete",
-                        identifier=event.from_email,
-                        channel="email",
+                        outcome="success",
+                        identifier=str(event.from_email),
+                        company_name=brief.company_name,
+                        icp_segment=brief.icp_segment,
+                        segment_confidence=brief.segment_confidence,
+                        booking_requested=booking_requested,
+                        requested_booking_start=requested_booking_start or "",
+                        booking_created=booking_result is not None,
+                        reply_status=str(result["reply"].get("status", "")),
+                        reply_reason=str(result["reply"].get("reason", "")),
                     ),
                 )
                 return result

@@ -397,6 +397,49 @@ def test_handle_email_runs_enrichment_and_sends_confidence_aware_reply(monkeypat
     assert result["enrichment"]["booking_created"] is False
 
 
+def test_handle_email_logs_step_by_step_progress(caplog, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.calcom_username",
+        "tenacious-demo",
+    )
+    brief = _fake_brief(company_name="Acme", icp_segment=1, segment_confidence=0.2)
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    with caplog.at_level(logging.INFO, logger="agent.workflows.lead_orchestrator"):
+        orchestrator.handle_email(
+            InboundEmailEvent(
+                from_email="lead@acme.com",
+                subject="Can we schedule a call?",
+                body="I'd like to book a demo next week.",
+            )
+        )
+
+    records = [r for r in caplog.records if r.getMessage() == "handle_email"]
+    phases = [r.wf_phase for r in records]
+    assert phases == [
+        "start",
+        "enrichment_complete",
+        "booking_skipped",
+        "reply_sent",
+        "complete",
+    ]
+    assert records[1].he_icp_segment == "1"
+    assert records[1].he_segment_confidence == "0.200"
+    assert records[2].he_reply_reason == "missing_booking_start"
+    assert records[3].he_reply_status == "sent"
+
+
 def test_handle_email_auto_books_when_explicit_iso_time_present(monkeypatch) -> None:
     monkeypatch.setattr(
         "agent.workflows.lead_orchestrator.settings.outbound_enabled",
@@ -429,6 +472,35 @@ def test_handle_email_auto_books_when_explicit_iso_time_present(monkeypatch) -> 
     assert result["enrichment"]["booking_created"] is True
     assert result["enrichment"]["requested_booking_start"] == "2026-05-01T10:00:00Z"
     assert "I booked the discovery call for 2026-05-01T10:00:00Z" in result["reply"]["html"]
+
+
+def test_handle_email_logs_booking_created_phase(caplog, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent.workflows.lead_orchestrator.settings.outbound_enabled",
+        True,
+    )
+    brief = _fake_brief(company_name="Acme", icp_segment=1, segment_confidence=0.9)
+    orchestrator = LeadOrchestrator(
+        hubspot=FakeHubSpotClient(),
+        calcom=FakeCalComClient(),
+        langfuse=FakeLangfuseClient(),
+        resend=FakeResendClient(),
+        sms=FakeSmsClient(),
+        enrichment_runner=lambda **_: brief,
+    )
+
+    with caplog.at_level(logging.INFO, logger="agent.workflows.lead_orchestrator"):
+        orchestrator.handle_email(
+            InboundEmailEvent(
+                from_email="jane.doe@acme.com",
+                subject="Please book the call",
+                body="2026-05-01T10:00:00Z works for me.",
+                message_id="msg_123",
+            )
+        )
+
+    records = [r for r in caplog.records if r.getMessage() == "handle_email"]
+    assert any(r.wf_phase == "booking_created" and r.he_booking_created == "true" for r in records)
 
 
 def _make_orchestrator(
