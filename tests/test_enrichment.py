@@ -8,6 +8,7 @@ from agent.enrichment.artifacts import (
     write_discovery_call_context_brief,
     write_hiring_signal_brief,
 )
+from agent.enrichment.bench_capacity import check_capacity
 from agent.enrichment.layoffs import _approximate_headcount
 from agent.enrichment.layoffs import check as layoffs_check
 from agent.enrichment.pipeline import _classify_segment, run
@@ -396,3 +397,67 @@ def test_github_fork_only_does_not_count_toward_confidence() -> None:
     _, _, conf_forks = score({"github_activity": True, "github_fork_only": True})
     _, _, conf_none = score({})
     assert conf_forks == conf_none
+
+
+# ---------------------------------------------------------------------------
+# bench_capacity.check_capacity — P-009 through P-012
+# ---------------------------------------------------------------------------
+
+_SAMPLE_BENCH = {
+    "stacks": {
+        "go": {
+            "available_engineers": 3,
+            "seniority_mix": {"junior_0_2_yrs": 1, "mid_2_4_yrs": 1, "senior_4_plus_yrs": 1},
+            "time_to_deploy_days": 14,
+            "note": "",
+        },
+        "ml": {
+            "available_engineers": 5,
+            "seniority_mix": {"junior_0_2_yrs": 2, "mid_2_4_yrs": 2, "senior_4_plus_yrs": 1},
+            "time_to_deploy_days": 10,
+            "note": "",
+        },
+        "infra": {
+            "available_engineers": 4,
+            "seniority_mix": {"junior_0_2_yrs": 1, "mid_2_4_yrs": 2, "senior_4_plus_yrs": 1},
+            "time_to_deploy_days": 14,
+            "note": "",
+        },
+        "fullstack_nestjs": {
+            "available_engineers": 2,
+            "seniority_mix": {"junior_0_2_yrs": 0, "mid_2_4_yrs": 2, "senior_4_plus_yrs": 0},
+            "time_to_deploy_days": 14,
+            "note": "Currently committed on the Modo Compass engagement through Q3 2026.",
+        },
+    }
+}
+
+
+def test_capacity_check_blocks_overcount_p009() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=10)
+    assert not result["feasible"]
+    assert result["available"] == 3
+    assert "10" in result["reason"] or "3" in result["reason"]
+
+
+def test_capacity_check_blocks_commitment_note_p010() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="fullstack_nestjs", requested_count=1)
+    assert not result["feasible"]
+    assert "committed" in result["reason"].lower() or "Q3 2026" in result["reason"]
+
+
+def test_capacity_check_blocks_seniority_shortfall_p011() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="ml", requested_count=2, seniority="senior")
+    assert not result["feasible"]
+    assert result["available_seniority"] == 1
+
+
+def test_capacity_check_blocks_lead_time_p012() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="infra", requested_count=1, lead_days=7)
+    assert not result["feasible"]
+    assert "14" in result["reason"] or "lead" in result["reason"].lower()
+
+
+def test_capacity_check_passes_valid_request() -> None:
+    result = check_capacity(_SAMPLE_BENCH, stack="go", requested_count=2)
+    assert result["feasible"]

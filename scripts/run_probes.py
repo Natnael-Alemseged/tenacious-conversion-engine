@@ -278,70 +278,68 @@ def _load_real_bench() -> dict:
 
 
 def probe_P009() -> tuple[int, list[str], list[str]]:
-    """Bench has 3 Go engineers; prospect requests 10."""
+    """Capacity check blocks 10 Go engineers when bench has 3."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        go_available = bench.get("stacks", {}).get("go", {}).get("available_engineers", 0)
-        requested = 10
-        # The failure mode: no guard prevents claiming capacity > available
-        if go_available < requested:
-            # This is the condition that should block the commitment — confirm it exists
-            # "triggered" means the gap exists and no guard is implemented in reply generation
+        result = check_capacity(bench, stack="go", requested_count=10)
+        if result["feasible"]:
             triggered += 1
-            details.append(f"go available={go_available} < requested={requested}; no reply guard")
+            details.append(
+                f"check_capacity returned feasible=True for go×10 (bench has {result['available']})"
+            )
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
 
 def probe_P010() -> tuple[int, list[str], list[str]]:
-    """NestJS engineers committed through Q3 2026 — availability note should block."""
+    """Capacity check blocks NestJS when commitment note is present."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        nestjs = bench.get("stacks", {}).get("fullstack_nestjs", {})
-        available = nestjs.get("available_engineers", 0)
-        note = nestjs.get("note", "")
-        # Triggered if: engineers appear available in count but are committed
-        if available > 0 and "committed" in note.lower():
+        result = check_capacity(bench, stack="fullstack_nestjs", requested_count=1)
+        if result["feasible"]:
             triggered += 1
-            details.append(f"NestJS shows {available} available but note='{note[:60]}...'")
+            details.append("NestJS capacity shows feasible despite commitment note")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
 
 def probe_P011() -> tuple[int, list[str], list[str]]:
-    """ML bench has 1 senior engineer; prospect requests 2."""
+    """Capacity check blocks 2 senior ML engineers when bench has 1."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        ml = bench.get("stacks", {}).get("ml", {})
-        senior_available = ml.get("seniority_mix", {}).get("senior_4_plus_yrs", 0)
-        requested_senior = 2
-        if senior_available < requested_senior:
+        result = check_capacity(bench, stack="ml", requested_count=2, seniority="senior")
+        if result["feasible"]:
             triggered += 1
-            details.append(f"ML senior available={senior_available} < requested={requested_senior}")
+            avail = result["available_seniority"]
+            details.append(f"ML senior capacity shows feasible (available_seniority={avail})")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
 
 def probe_P012() -> tuple[int, list[str], list[str]]:
-    """Infra engineers have 14-day lead time; prospect requests start in 7 days."""
+    """Capacity check blocks infra when lead time is 14 days but 7 days requested."""
+    from agent.enrichment.bench_capacity import check_capacity
+
     bench = _load_real_bench()
     triggered, trace_ids, details = 0, [], []
     for _ in range(TRIALS):
         tid = _trace_id()
-        infra = bench.get("stacks", {}).get("infra", {})
-        lead_time = infra.get("time_to_deploy_days", 0)
-        requested_days = 7
-        if lead_time > requested_days:
+        result = check_capacity(bench, stack="infra", requested_count=1, lead_days=7)
+        if result["feasible"]:
             triggered += 1
-            details.append(
-                f"Infra time_to_deploy={lead_time} days > requested={requested_days} days"
-            )
+            details.append("Infra capacity shows feasible with 7-day lead (bench requires 14)")
         trace_ids.append(tid)
     return triggered, trace_ids, details
 
