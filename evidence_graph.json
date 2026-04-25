@@ -1,6 +1,6 @@
 {
   "draft": false,
-  "generated_at": "2026-04-25T19:14:39.770778+00:00",
+  "generated_at": "2026-04-25T19:20:19.429473+00:00",
   "citations": {
     "tenacious_baseline_numbers": {
       "kind": "tenacious_internal",
@@ -555,9 +555,9 @@
       "claim_id": "generic_reply_rate",
       "label": "Generic outbound reply rate (non-autoresponder)",
       "value": {
-        "reply_rate": 0.17791411042944785,
+        "reply_rate": 0.1895424836601307,
         "replied_n": 29,
-        "outbound_n": 163,
+        "outbound_n": 153,
         "population_ids": [
           "",
           "hs-prospect+gen0@example.com",
@@ -594,7 +594,7 @@
     {
       "claim_id": "competitive_gap_reply_rate_delta",
       "label": "Reply-rate delta: competitive-gap minus generic",
-      "value": 0.8220858895705522,
+      "value": 0.8104575163398693,
       "unit": "proportion",
       "sources": [
         {
@@ -614,11 +614,10 @@
       "claim_id": "stalled_thread_rate",
       "label": "Stalled-thread rate (14d no booking proxy = no booking_created)",
       "value": {
-        "stalled_rate": 0.8852459016393442,
-        "stalled_n": 54,
-        "inbound_n": 61,
+        "stalled_rate": 0.9230769230769231,
+        "stalled_n": 48,
+        "inbound_n": 52,
         "population_ids": [
-          "1001",
           "hs-prospect+cg0@example.com",
           "hs-prospect+cg10@example.com",
           "hs-prospect+cg11@example.com",
@@ -678,7 +677,7 @@
     {
       "claim_id": "cost_per_qualified_lead",
       "label": "Cost per qualified lead (USD) where qualified = booking_created",
-      "value": 0.033099138214285714,
+      "value": 0.057923491875,
       "unit": "usd_per_qualified_lead",
       "sources": [
         {
