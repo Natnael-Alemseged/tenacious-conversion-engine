@@ -9,6 +9,7 @@ from agent.api.routes.bookings import router as booking_router
 from agent.api.routes.health import router as health_router
 from agent.api.routes.webhooks import router as webhook_router
 from agent.core.config import settings
+from agent.storage.postgres import postgres_enabled, run_migrations
 
 # Snapshot clean record attrs before any extras are added, used by the formatter.
 _KNOWN_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {
@@ -62,6 +63,8 @@ def _configure_logging() -> None:
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     _configure_logging()
+    if postgres_enabled():
+        run_migrations()
     yield
 
 
