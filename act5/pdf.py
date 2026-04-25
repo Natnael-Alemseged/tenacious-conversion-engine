@@ -28,6 +28,11 @@ def render_memo_pdf(*, evidence: dict[str, Any], out_path: Path) -> None:
     sealed = claim_map.get("tau2_sealed_pass_at_1", {})
     auto = claim_map.get("tau2_auto_opt_sealed_pass_at_1", {})
     cost = claim_map.get("total_cost_usd", {})
+    cg = claim_map.get("competitive_gap_reply_rate", {})
+    gen = claim_map.get("generic_reply_rate", {})
+    delta = claim_map.get("competitive_gap_reply_rate_delta", {})
+    stalled = claim_map.get("stalled_thread_rate", {})
+    cpl = claim_map.get("cost_per_qualified_lead", {})
 
     page1 = [
         "Tenacious Conversion Engine — Act V Memo (DRAFT)",
@@ -36,6 +41,11 @@ def render_memo_pdf(*, evidence: dict[str, Any], out_path: Path) -> None:
         f"τ² sealed pass@1: {sealed.get('value')}",
         f"Auto-opt sealed pass@1: {auto.get('value')}",
         f"Measured total cost (USD): {cost.get('value')}",
+        f"Competitive-gap reply rate: {cg.get('value')}",
+        f"Generic reply rate: {gen.get('value')}",
+        f"Reply-rate delta (cg - gen): {delta.get('value')}",
+        f"Stalled-thread rate (no booking_created): {stalled.get('value')}",
+        f"Cost per qualified lead (USD): {cpl.get('value')}",
         "",
         "Pilot recommendation: Segment 2 email-first pilot, 30 days.",
     ]
