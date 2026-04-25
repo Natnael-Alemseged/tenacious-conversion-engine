@@ -18,3 +18,6 @@ score_log.json
 
 # Generated artifacts (do not commit)
 artifacts/
+
+# Local datasets (do not commit)
+data/hiring_velocity_snapshots.jsonl
