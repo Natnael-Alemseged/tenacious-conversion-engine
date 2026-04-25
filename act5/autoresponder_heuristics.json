@@ -1,0 +1,15 @@
+{
+  "subject_regexes": [
+    "(?i)out of office",
+    "(?i)automatic reply",
+    "(?i)auto[- ]reply",
+    "(?i)autoreply",
+    "(?i)vacation"
+  ],
+  "body_regexes": [
+    "(?i)thank you for your email",
+    "(?i)i am out of the office",
+    "(?i)this is an automated (message|reply)"
+  ]
+}
+

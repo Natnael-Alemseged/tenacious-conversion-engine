@@ -1,0 +1,17 @@
+{
+  "citations": [
+    {
+      "id": "tau2bench_retail_leaderboard_feb_2026",
+      "title": "τ²-Bench retail leaderboard (Feb 2026 reference ceiling ~42%)",
+      "url": "https://github.com/sierra-research/tau2-bench",
+      "accessed_at": "2026-04-25"
+    },
+    {
+      "id": "trp1_week10_brief",
+      "title": "TRP1 Challenge Week 10 Conversion Engine for Sales Automation (Tenacious edition)",
+      "url": "file:TRP1 Challenge Week 10 Conversion Engine for Sales Automation.md",
+      "accessed_at": "2026-04-25"
+    }
+  ]
+}
+
