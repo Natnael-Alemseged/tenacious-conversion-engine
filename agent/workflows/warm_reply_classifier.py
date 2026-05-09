@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from agent.integrations.openrouter_llm import OpenRouterClient
+
+_log = logging.getLogger(__name__)
 
 WarmReplyClass = Literal["engaged", "curious", "hard_no", "soft_defer", "objection", "unknown"]
 
@@ -132,7 +135,19 @@ def classify_warm_reply(
             max_tokens=120,
             metadata={"task": "warm_reply_class"},
         )
-        payload = _safe_parse_json(content) or {}
+        payload = _safe_parse_json(content)
+        if payload is None:
+            _log.warning(
+                "warm_reply_parse_failed",
+                extra={"task": "warm_reply_class", "raw_len": len(content or "")},
+            )
+            fallback = _heuristic_classify(subject, body)
+            return WarmReplyClassResult(
+                fallback.reply_class,
+                fallback.confidence,
+                abstained=fallback.abstained,
+                notes=f"parse_failed:{fallback.notes}",
+            )
         label = str(payload.get("reply_class") or "").strip()
         abstained = bool(payload.get("abstained") or False)
         try:
@@ -142,7 +157,17 @@ def classify_warm_reply(
         conf = max(0.0, min(1.0, conf))
         notes = str(payload.get("notes") or "")[:200]
         if label not in ("engaged", "curious", "hard_no", "soft_defer", "objection", "unknown"):
-            return _heuristic_classify(subject, body)
+            _log.warning(
+                "warm_reply_invalid_class",
+                extra={"task": "warm_reply_class", "reply_class": label[:80]},
+            )
+            fallback = _heuristic_classify(subject, body)
+            return WarmReplyClassResult(
+                fallback.reply_class,
+                fallback.confidence,
+                abstained=fallback.abstained,
+                notes=f"invalid_class:{fallback.notes}",
+            )
         # If the model says "unknown" but doesn't abstain, treat as abstained.
         if label == "unknown" and not abstained:
             abstained = True

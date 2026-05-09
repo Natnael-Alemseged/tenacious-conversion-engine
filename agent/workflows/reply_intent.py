@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from agent.integrations.openrouter_llm import OpenRouterClient
+
+_log = logging.getLogger(__name__)
 
 ReplyIntent = Literal[
     "request_brief",
@@ -74,7 +77,13 @@ def classify_reply_intent(
             max_tokens=120,
             metadata={"task": "reply_intent"},
         )
-        payload = _safe_parse_json(content) or {}
+        payload = _safe_parse_json(content)
+        if payload is None:
+            _log.warning(
+                "reply_intent_parse_failed",
+                extra={"task": "reply_intent", "raw_len": len(content or "")},
+            )
+            return ReplyIntentResult(intent="other", confidence=0.0, notes="parse_failed")
         intent = payload.get("intent")
         confidence = payload.get("confidence")
         notes = str(payload.get("notes") or "")[:200]
@@ -85,6 +94,10 @@ def classify_reply_intent(
             "provide_requirements",
             "other",
         ):
+            _log.warning(
+                "reply_intent_invalid_intent",
+                extra={"task": "reply_intent", "intent": str(intent or "")[:80]},
+            )
             return ReplyIntentResult(intent="other", confidence=0.0, notes="invalid_intent")
         try:
             conf_f = float(confidence)
